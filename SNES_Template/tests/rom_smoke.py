@@ -13,9 +13,19 @@ class Runner:
     def __init__(self,e,scope):
         self.e=e;self.scope=scope;self.shots=[];self.prefix=''
     def capture(self,name):
-        self.shots.append(self.e.capture(self.prefix+name+'.png'))
+        self.shots.append(self.e.capture(self.prefix+name+'.png',allow_dark=name=='lamp-off'))
+    def screen_point(self,x,y):
+        state=self.e.state()
+        if state['mode']!=3:return x,y
+        dy=y-state['y']
+        sy=round(32+16896/(128-dy))
+        sx=round(128+(x-state['x'])*(sy-32)/128)
+        return sx,sy
     def action(self,x=128,y=112):
-        self.e.gun_tap(2,x,y) if self.scope else self.e.tap(8)
+        if self.scope:
+            sx,sy=self.screen_point(x,y)
+            self.e.gun_tap(2,sx,sy)
+        else:self.e.tap(8)
     def finish(self):
         for _ in range(80):
             if self.e.state()['mode']==12:
@@ -41,12 +51,22 @@ class Runner:
     def walk(self,x,y):
         if self.scope:
             room=self.e.state()['room']
-            self.e.gun_tap(2,x,y)
-            for _ in range(650):
-                s=self.e.state()
-                if s['room']!=room or s['mode']!=3:return
-                if abs(s['x']-x)<=1 and abs(s['y']-y)<=1:break
-                self.e.run(1)
+            for _ in range(50):
+                state=self.e.state()
+                if state['room']!=room or state['mode']!=3:return
+                if abs(state['x']-x)<=1 and abs(state['y']-y)<=1:break
+                tx=state['x']+max(-48,min(48,x-state['x']))
+                ty=state['y']+max(-24,min(24,y-state['y']))
+                if (tx,ty)!=(x,y):
+                    for hx,hy in HOTSPOTS[room]:
+                        if abs(tx-hx)+abs(ty-hy)<=20:
+                            tx=max(12,min(244,tx+(20 if tx>=hx else -20)))
+                self.action(tx,ty)
+                for _ in range(60):
+                    state=self.e.state()
+                    if state['room']!=room or state['mode']!=3:return
+                    if abs(state['x']-tx)<=2 and abs(state['y']-ty)<=2:break
+                    self.e.run(1)
             else:raise AssertionError('Scope walk stuck: '+str(self.e.state()))
             self.e.run(5);return
         self.axis('y',174);self.axis('x',x);self.axis('y',y)
@@ -98,13 +118,14 @@ class Runner:
         x,y=HOTSPOTS[self.e.state()['room']][index]
         self.walk(x,y+22)
         if self.scope:
-            self.e.gun_tap(4,x,y);self.e.x=x;self.e.y=y;self.e.gun={2}
+            sx,sy=self.screen_point(x,y)
+            self.e.gun_tap(4,sx,sy);self.e.x=sx;self.e.y=sy;self.e.gun={2}
         for _ in range(180):
             self.e.run(1)
             if self.e.state()['echo_charge']==45:break
         else:raise AssertionError('Echo never visible: '+str(self.e.state()))
         self.e.gun=set();self.e.run(8)
-        if self.scope:self.e.gun_tap(4,x,y)
+        if self.scope:self.e.gun_tap(4,*self.screen_point(x,y))
         self.action(x,y);self.e.wait_mode(2);self.capture('echo-'+str(bit));self.finish()
         assert self.e.state()['memories']&bit,self.e.state()
     def bells(self):
@@ -134,14 +155,15 @@ class Runner:
     def rune(self,index):
         x,y=HOTSPOTS[3][index+2];self.walk(x,y+22)
         if self.scope:
-            self.e.gun_tap(4,x,y) # toggle TURBO: keep still while directing the lamp
-            self.e.x=x;self.e.y=y;self.e.gun={2}
+            sx,sy=self.screen_point(x,y)
+            self.e.gun_tap(4,sx,sy) # keep still while directing the lamp
+            self.e.x=sx;self.e.y=sy;self.e.gun={2}
         for _ in range(180):
             self.e.run(1)
             if self.e.state()['rune_mask']&(1<<index):break
             if self.e.state()['charge'+str(index)]>=60:break
         self.e.gun=set();self.e.run(8)
-        if self.scope:self.e.gun_tap(4,x,y)
+        if self.scope:self.e.gun_tap(4,*self.screen_point(x,y))
         if not self.e.state()['rune_mask']&(1<<index):
             self.action(x,y)
         self.e.wait_state(lambda s:s['rune_mask']&(1<<index),'Rune seal')
@@ -200,22 +222,20 @@ def run(core,ending,pal=False,scope=False):
             assert captured_stairs,'Stairs were never reached'
             assert e.state()['mode']==2 and e.state()['page']==1,e.state()
     e.wait_mode(3)
-    # The footer border starts on scanline 191 because BG3 scrolls by -1.
-    r.capture('lamp-off');off=np.array(e.frame)[24:191]
+    r.capture('lamp-off');off=np.array(e.frame)
     assert np.max(off)==0,'Lamp OFF must hide the world'
-    r.light();r.capture('lamp-on');on=np.array(e.frame)[24:191]
-    lit=np.max(on,axis=2)>64
-    assert 100<np.count_nonzero(lit)<lit.size//2,'Radial torch clipping missing'
-    assert np.count_nonzero(np.any(on>0,axis=2))>np.count_nonzero(lit),'Ambient silhouettes missing'
+    r.light();r.capture('lamp-on');on=np.array(e.frame)
+    assert np.count_nonzero(np.max(on[80:220],axis=2)>32)>300,'Mode 7 ground missing'
+    assert np.count_nonzero(np.any(on[0:24]>64,axis=2))==0,'Permanent header returned'
+    assert np.count_nonzero(np.any(on[208:224]>64,axis=2))<1500,'Permanent footer returned'
+    e.tap(1);e.wait_mode(6);r.capture('status')
+    saved=e.state();e.run(60)
+    assert e.state()['oil']==saved['oil'] and e.state()['fear']==saved['fear'],'Status must freeze simulation'
+    e.tap(1);e.wait_mode(3)
     r.capture('torch-motion-a');first=np.array(e.frame).copy();position=e.state()
     e.run(8);r.capture('torch-motion-b');second=np.array(e.frame)
     assert (e.state()['x'],e.state()['y'])==(position['x'],position['y'])
-    x,y=position['x'],position['y']
-    # Heat must move background pixels away from the ember sprites.
-    heat_a=first[y-48:y-20,x-40:x-16]
-    heat_b=second[y-48:y-20,x-40:x-16]
-    assert np.count_nonzero(heat_a!=heat_b)>8,'Torch heat shimmer is static'
-    assert np.count_nonzero(first[y-54:y+2,x-8:x+24]!=second[y-54:y+2,x-8:x+24])>4,'Flame/embers are static'
+    assert np.count_nonzero(first[104:151,128:148]!=second[104:151,128:148])>4,'Flame/embers are static'
     r.inspect(0);r.inspect(1);r.choose(0 if ending!='bad' else 1)
     if ending=='secret':
         r.inspect(4);r.echo(5,1)

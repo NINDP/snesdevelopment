@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "game.h"
+#include "perspective.h"
 static SkInput none;
 static void press(Game *g, SkU16 button) {
     SkInput in = none;
@@ -372,7 +373,29 @@ static void test_corridor(void) {
     assert(g.mode == G_EXPLORE && g.room == 0);
 }
 
+static void test_perspective(void) {
+    Game g;
+    SkS16 sx, sy, wx, wy;
+    int dx, dy;
+    game_new(&g);
+    g.x = 128;
+    g.y = 128;
+    for (dy = -70; dy <= 32; dy += 3)
+        for (dx = -48; dx <= 48; dx += 4) {
+            assert(perspective_project(&g, g.x + dx, g.y + dy, &sx, &sy));
+            assert(perspective_pick(&g, sx, sy, &wx, &wy));
+            assert(wx >= g.x + dx - 3 && wx <= g.x + dx + 3);
+            assert(wy >= g.y + dy - 3 && wy <= g.y + dy + 3);
+        }
+    assert(perspective_project(&g, g.x, g.y, &sx, &sy));
+    assert(sx == 128 && sy == PERSPECTIVE_ANCHOR);
+    assert(!perspective_project(&g, 128, 200, &sx, &sy));
+    assert(!perspective_pick(&g, 128, 60, &wx, &wy));
+    assert(!perspective_pick(&g, -1, 164, &wx, &wy));
+}
+
 int main(void) {
+    test_perspective();
     test_corridor();
     test_radial_torch();
     test_clock_and_text();

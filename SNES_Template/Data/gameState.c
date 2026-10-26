@@ -1,6 +1,7 @@
 #include <snes.h>
 #include "include/platform.h"
 #include "include/scope_input.h"
+#include "include/perspective.h"
 static Game game;
 static SkInput frame_input;
 static SkU8 draw_pending;
@@ -50,6 +51,9 @@ static SkInput read_input(void) {
             in.pressed |= SK_LIGHT;
         if (packet.buttons & SSC_PAUSE)
             in.pressed |= SK_PAUSE;
+    }
+    if (game.mode == G_EXPLORE && in.scope && in.aim_valid) {
+        in.aim_valid = perspective_pick(&game, in.x, in.y, &in.x, &in.y);
     }
     if ((edge & KEY_SELECT) && packet.connected) {
         calibration = 1;

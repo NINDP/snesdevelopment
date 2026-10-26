@@ -2,6 +2,7 @@
 #include <string.h>
 #include "../include/platform.h"
 #include "../include/ui_text.h"
+#include "../include/perspective.h"
 extern u8 bg0_tiles, bg0_tiles_end, bg0_map;
 extern u8 bg1_tiles, bg1_tiles_end, bg1_map, bg1_palette;
 extern u8 bg2_tiles, bg2_tiles_end, bg2_map;
@@ -29,7 +30,6 @@ static SkU16 text_map[VIDEO_TEXT_ENTRIES];
 static SkU8 current_bg = 255, dirty = 1, redraw = 1;
 static SkU16 last_keys[10] = {65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535};
 static SkS16 previous_x = 0, previous_y = 0, previous_enemy_x = 0, previous_enemy_y = 0;
-static SkU8 cached_near = SK_NONE, near_direction = 255, near_lit = 255, near_room = 255;
 /* Applied in VBlank: splash and cinematic transitions use master brightness. */
 static SkU8 brightness = 15, scene_age = 0;
 static SkU16 camera_x = 0;
@@ -86,14 +86,6 @@ static void text_n(SkU8 x, SkU8 y, const char *value, SkU16 limit) {
 static void text(SkU8 x, SkU8 y, const char *value) {
     text_n(x, y, value, 65535);
 }
-static void first_line(SkU8 x, SkU8 y, const char *value) {
-    SkU16 count = 0;
-    if (!redraw)
-        return;
-    while (value[count] && value[count] != 10 && count < 30)
-        ++count;
-    text_n(x, y, value, count);
-}
 static void number(SkU8 x, SkU8 y, SkU16 value) {
     char out[6], tmp;
     SkU8 i = 0, j;
@@ -117,6 +109,8 @@ static void background(SkU8 id) {
     SkU8 map_size = SC_32x32;
     if (current_bg == id)
         return;
+    if (current_bg >= 10 && current_bg <= 13)
+        perspective_leave();
     switch (id) {
     case 0:
         tiles = &bg0_tiles;
@@ -252,6 +246,10 @@ void video_commit(void) {
         dmaCopyVram((u8 *)text_map, VIDEO_TEXT_MAP, sizeof(text_map));
         dirty = 0;
     }
+    if (current_bg >= 10 && current_bg <= 13) {
+        perspective_commit();
+        return;
+    }
     flashlight_commit();
     if (current_bg == 6)
         bgSetScroll(0, camera_x, -1);
@@ -367,20 +365,28 @@ static void draw_torch(const Game *g) {
     }
 }
 void video_draw(const Game *g, SkU8 scope) {
-    SkU8 i, bg, near, changed, world, cinematic, corridor;
+    SkU8 i, bg, near, changed, world, cinematic, corridor, projected, cut;
     SkU16 keys[10];
     const StoryLine *line;
-    near = SK_NONE;
     if (g->mode == G_EXPLORE) {
-        if (g->x != previous_x || g->y != previous_y || g->direction != near_direction ||
-            (g->lamp && g->oil) != near_lit || g->room != near_room) {
-            cached_near = game_nearby(g);
-            near_direction = g->direction;
-            near_lit = g->lamp && g->oil;
-            near_room = g->room;
+        if (current_bg != 10 + g->room) {
+            hide();
+            perspective_enter(g->room);
+            current_bg = 10 + g->room;
+            memset(last_keys, 255, sizeof(last_keys));
         }
-        near = cached_near;
+        perspective_draw(g);
+        perspective_overlay(224);
+        return;
     }
+    projected = (g->mode >= G_DIALOGUE && g->mode <= G_PAUSE) || g->mode == G_BELL;
+    if (g->mode == G_DIALOGUE && g->dialogue == D_PROLOG)
+        projected = 0;
+    if (g->mode == G_PAUSE && g->return_mode == G_CORRIDOR)
+        projected = 0;
+    if (g->mode == G_PAUSE && g->return_mode == G_DIALOGUE && g->dialogue == D_PROLOG)
+        projected = 0;
+    near = SK_NONE;
     keys[0] = g->mode | ((SkU16)g->option << 8);
     keys[1] = g->dialogue | ((SkU16)g->page << 8);
     keys[2] = g->revealed | ((SkU16)g->room << 8);
@@ -415,7 +421,23 @@ void video_draw(const Game *g, SkU8 scope) {
         bg = 6;
     world = bg >= 2 && bg <= 5;
     changed = current_bg != bg;
-    background(bg);
+    if (projected) {
+        if (current_bg != 10 + g->room) {
+            hide();
+            perspective_enter(g->room);
+            current_bg = 10 + g->room;
+        }
+        cut = g->mode == G_DIALOGUE ? 128 : (g->mode == G_CHOICE ? 88 : 64);
+        if (g->mode == G_JOURNAL)
+            cut = 16;
+        if (g->mode == G_PAUSE)
+            cut = 48;
+        perspective_draw(g);
+        perspective_overlay(cut);
+        world = 0;
+        changed = 0;
+    } else
+        background(bg);
     if (changed) {
         hide();
         camera_x = 0;
@@ -432,7 +454,8 @@ void video_draw(const Game *g, SkU8 scope) {
             brightness = (SkU8)((150 - g->tick) / 2);
     }
     /* Text stays readable, but even pause must not reveal an unlit world. */
-    flashlight_prepare(g, world);
+    if (!projected)
+        flashlight_prepare(g, world);
     if (world && g->lamp && g->oil)
         bgSetEnable(1);
     else
@@ -486,35 +509,6 @@ void video_draw(const Game *g, SkU8 scope) {
         panel(23, 5);
         text(2, 24, TXT_CORRIDOR_WALK);
         text(2, 26, TXT_CORRIDOR_HINT);
-    } else if (g->mode == G_EXPLORE) {
-        panel(0, 3);
-        text(1, 1, TXT_OIL);
-        number(7, 1, (bucket5[g->oil]) * 5);
-        text(14, 1, TXT_FEAR);
-        number(21, 1, (bucket5[g->fear]) * 5);
-        meter(1, 2, bucket5[g->oil]);
-        meter(18, 2, bucket5[g->fear]);
-        panel(24, 4);
-        if (near != 255)
-            text(1, 24, game_hotspot(g->room, near)->name);
-        if (g->notice)
-            text(1, 25, notice_text(g->notice));
-        else if (!g->oil)
-            text(1, 25, TXT_EMPTY);
-        if (g->room == 1) {
-            text(24, 24, "/");
-            number(22, 24, g->forest_step);
-            text(26, 24, "3");
-        }
-        if (g->room == 3) {
-            number(17, 24, g->charge[0]);
-            number(22, 24, g->charge[1]);
-            number(27, 24, g->charge[2]);
-        }
-        first_line(1, 26, game_goal(g));
-        if ((g->room == 0 && near == 5) || ((g->room == 1 || g->room == 3) && near == 8))
-            number(27, 24, g->echo_charge);
-        text(1, 27, TXT_EXPLORE);
     } else if (g->mode == G_CHOICE) {
         panel(11, 17);
         text(1, 12, TXT_GOAL);
@@ -547,6 +541,12 @@ void video_draw(const Game *g, SkU8 scope) {
     } else if (g->mode == G_JOURNAL) {
         panel(2, 26);
         text(1, 3, TXT_JOURNAL);
+        text(1, 4, TXT_OIL);
+        number(8, 4, g->oil);
+        text(15, 4, TXT_FEAR);
+        number(23, 4, g->fear);
+        meter(1, 5, bucket5[g->oil]);
+        meter(18, 5, bucket5[g->fear]);
         text(1, 6, TXT_GOAL);
         text(1, 8, game_goal(g));
         text(1, 12, game_journal(g));
@@ -557,8 +557,24 @@ void video_draw(const Game *g, SkU8 scope) {
         number(25, 18, g->wards);
         text(1, 20, TXT_BELL_STATUS);
         number(12, 20, g->memories & 8 ? 3 : g->bell_step);
-        text(1, 22, TXT_OPTIONAL);
+        text(1, 22, g->notice ? notice_text(g->notice) : TXT_OPTIONAL);
+        if (g->room == 1) {
+            text(17, 20, TXT_SIGNS);
+            number(24, 20, g->forest_step);
+            text(26, 20, "/3");
+        }
+        if (g->room == 3) {
+            text(1, 21, TXT_NODES);
+            number(8, 21, g->charge[0]);
+            number(15, 21, g->charge[1]);
+            number(22, 21, g->charge[2]);
+        }
         text(1, 23, TXT_WARD_HELP);
+        if (redraw) {
+            near = game_nearby(g);
+            if (near != SK_NONE)
+                text(1, 24, game_hotspot(g->room, near)->name);
+        }
         text(1, 25, "Y / B / A: BACK");
     } else if (g->mode == G_PAUSE) {
         panel(6, 22);

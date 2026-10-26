@@ -28,23 +28,39 @@ def profile(core, label, pal=False):
     runner.finish()
     assert emulator.state()['mode'] == 3
     records = []
-    for name in ('dark-static', 'lit-static', 'lit-sweep'):
+    for name in ('dark-static', 'lit-static', 'lit-sweep', 'village-walk',
+                 'forest-walk', 'chapel-walk', 'cellar-walk'):
         if name == 'lit-static':
             runner.light()
-        emulator.run(20)
+        if name == 'forest-walk':
+            runner.inspect(0); runner.inspect(1); runner.choose(0); runner.inspect(3)
+        if name == 'chapel-walk':
+            runner.inspect(0); runner.inspect(1); runner.choose(0)
+            for index in (2, 3, 4): runner.inspect(index)
+            runner.inspect(5)
+        if name == 'cellar-walk':
+            runner.inspect(0); runner.inspect(1); runner.inspect(6); runner.inspect(3)
+            runner.cups(); runner.inspect(4); runner.choose(0)
+        if name.endswith('-walk'):
+            runner.walk(124, 176)
+        emulator.run(120)
         previous = stamp()
         updates = 0
         max_gap = 0
         for frame in range(600):
-            emulator.buttons = {11, (4, 7, 5, 6)[(frame // 16) % 4]} if name == 'lit-sweep' else set()
+            if name.endswith('-walk'):
+                emulator.buttons = {(7, 4, 6, 5)[(frame // 70) % 4]}
+            else:
+                emulator.buttons = {11, (4, 7, 5, 6)[(frame // 16) % 4]} if name == 'lit-sweep' else set()
             emulator.run(1)
             current = stamp()
             if current != previous:
                 updates += 1
                 max_gap = max(max_gap, (current - previous) & 65535)
                 previous = current
+        emulator.buttons = set()
         assert emulator.state()['mode'] == 3
-        assert updates > 0, 'Runtime stamp did not advance'
+        assert updates == 600 and max_gap == 1, (name, updates, max_gap)
         records.append({'scenario': name, 'video_frames': 600,
                         'updates': updates, 'max_vblank_gap': max_gap})
     report = {'label': label, 'region': 'PAL' if pal else 'NTSC', 'cadence': records}

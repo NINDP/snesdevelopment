@@ -28,7 +28,7 @@ def report():
         raise ValueError('Project static RAM exceeds the 3 KiB review budget')
     symbols=(ROOT/'chernorechye.sym').read_text()
     for suffix in ('_tables','_heat_tables','_text_map'):
-        match=re.search(r'^([0-9a-fA-F]{8}) .*'+suffix+r'$',symbols,re.M)
+        match=re.search(r'^([0-9a-fA-F]{8}) tccs_.*'+suffix+r'$',symbols,re.M)
         if not match or int(match[1],16)>>16!=0x7e:
             raise ValueError('DMA buffer must remain in WRAM bank 7E: '+suffix)
     assets = ROOT / 'assets/generated'
@@ -57,6 +57,17 @@ def report():
             raise ValueError('Invalid cinematic tile or reserved UI palette: ' + path.name)
         if path.with_suffix('.pal').stat().st_size != 256:
             raise ValueError('Cinematic palette must contain 128 colors')
+    perspective = {p.name: p.stat().st_size for p in assets.glob('perspective[0-3].vram')}
+    if len(perspective) != 4 or any(size != 32768 for size in perspective.values()):
+        raise ValueError('Expected four interleaved Mode 7 banks')
+    for name in perspective:
+        payload = (assets / name).read_bytes()
+        if max(payload[1::2]) > 127:
+            raise ValueError('Mode 7 ground overlaps OBJ palette: ' + name)
+    for name in ('perspective-scale.hdma', 'perspective-light.hdma'):
+        payload = (assets / name).read_bytes()
+        if len(payload) != 673 or payload[-1] != 0 or any(payload[i] != 1 for i in range(0,672,3)):
+            raise ValueError('Expected 224 completed Mode 7 scanline records: ' + name)
     font = (assets / 'font.chr').stat().st_size
     sprites = (assets / 'sprites.chr').stat().st_size
     if font > 6144 or sprites > 16384:
@@ -64,11 +75,13 @@ def report():
     samples = sum(p.stat().st_size for p in assets.glob('*.brr'))
     if samples > 4096:
         raise ValueError('BRR payload exceeds the allocated 4 KiB sample region')
+    if (ROOT / 'chernorechye.sfc').read_bytes()[0x7fd5] != 0x30:
+        raise ValueError('ROM must use FastROM addressing')
     result = {'project_static_bytes': total, 'project_static_limit': 3072,
               'excludes': ['SDK runtime', 'CPU stack', 'APU driver'],
               'statics_by_module': allocations, 'buffers': expected,
               'background_bytes': backgrounds, 'cinematic_bytes': cinematics,
-              'ambient_map_bytes': 2048, 'font_bytes': font,
+              'perspective_bytes': perspective, 'fastrom': True, 'ambient_map_bytes': 2048, 'font_bytes': font,
               'sprite_bytes': sprites, 'brr_payload_bytes': samples,
               'vram_actual_peak_bytes': max(max(backgrounds.values()) + 4096,
                                              max(size + (4096 if name == 'cine0.chr' else 2048)

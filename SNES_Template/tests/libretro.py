@@ -151,11 +151,11 @@ class Emulator:
     def wait_mode(self,mode):
         return self.wait_state(lambda s:s['mode']==mode,'Expected mode '+str(mode))
 
-    def capture(self,name):
+    def capture(self,name,allow_dark=False):
         self.want_frame=True; self.run(12); self.want_frame=False
         assert self.frame is not None
         path=ROOT/'build'/name; self.frame.save(path)
-        assert np.max(np.array(self.frame))>0,'Empty PPU frame'
+        assert allow_dark or np.max(np.array(self.frame))>0,'Empty PPU frame'
         return str(path)
 
     def close(self): self.lib.retro_unload_game(); self.lib.retro_deinit()

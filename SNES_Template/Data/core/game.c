@@ -713,9 +713,7 @@ void game_tick(Game *g, const SkInput *in) {
             if (nearby == SK_NONE)
                 return;
             point = game_hotspot(g->room, nearby);
-            if (distance(in->x, point->x) > 18)
-                return;
-            if (distance(in->y, point->y) > 18)
+            if (distance(in->x, point->x) + distance(in->y, point->y) > 14)
                 return;
         }
         interact(g, nearby);

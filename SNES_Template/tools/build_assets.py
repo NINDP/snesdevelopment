@@ -260,6 +260,32 @@ def atlas():
         if n==3:
             d.line((x+9,y+13,x+9,y+18),fill=8)
             d.line((x+7,y+15,x+11,y+15),fill=8)
+    # Upright Mode 7 scenery uses the previously empty atlas strip at y=160.
+    d.rectangle((0,160,127,191),fill=0)
+    d.rectangle((13,181,18,191),fill=3)
+    d.polygon([(16,160),(4,174),(9,173),(0,184),(9,182),(3,189),
+               (28,189),(22,182),(31,184),(22,173),(27,174)],fill=4,outline=1)
+    d.line((15,164,9,176,15,174,6,185),fill=6,width=2)
+    d.line((19,174,24,181,17,179),fill=5)
+    # 16-pixel distant pine, rune stone, parchment, house, oil jar.
+    tree(d,40,170)
+    d.rectangle((48,171,61,189),fill=3,outline=1)
+    d.line((52,180,55,174,58,183,51,183),fill=8)
+    d.rectangle((48,162,61,168),fill=7)
+    d.line((51,164,58,164),fill=3)
+    d.rectangle((64,173,95,191),fill=4,outline=1)
+    d.polygon([(64,174),(80,160),(95,174)],fill=6,outline=1)
+    for yy in range(178,191,4):d.line((65,yy,94,yy),fill=3)
+    d.rectangle((77,179,84,191),fill=1)
+    d.rectangle((67,178,72,183),fill=8)
+    d.rectangle((99,179,107,190),fill=6,outline=1)
+    d.rectangle((101,174,105,180),fill=7)
+    d.line((100,182,105,182),fill=8)
+    # Smaller depth variants are prefiltered once, never scaled by the CPU.
+    for n,box in enumerate([(0,160,32,192),(64,160,96,192),(96,176,112,192)]+
+                           [(n*16,128,n*16+16,160) for n in range(5)]):
+        small=im.crop(box).resize((16,16),Image.Resampling.NEAREST)
+        im.paste(small,(n*16,224))
     return im
 def torch_table():
     (ROOT/'Data/content').mkdir(parents=True,exist_ok=True)
@@ -339,6 +365,8 @@ def main():
                    '.ends', '.section "%s_map" superfree'%name, name+'_map:','.incbin "assets/generated/%s.map"'%name,
                    name+'_palette:','.incbin "assets/generated/%s.pal"'%name,'.ends','']
         print(name,len(tiles)//32,'tiles')
+    from build_perspective import build as build_perspective
+    build_perspective(OUT,assembly,[v for c in PALETTE for v in c]+[0]*(768-48))
     palette=struct.pack('<16H',*[r//8+(g//8)*32+(b//8)*1024 for r,g,b in PALETTE])
     (OUT/'palette.pal').write_bytes(palette)
     ambient=struct.pack('<16H',*[max(0,r//32)+(max(0,g//32))*32+(max(0,b//24))*1024
