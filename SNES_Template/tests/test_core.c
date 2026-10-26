@@ -11,9 +11,9 @@ static void press(Game *g, SkU16 button) {
 }
 static void finish(Game *g) {
     unsigned n = 0;
-    while (g->mode == G_DIALOGUE && n++ < 100)
-        press(g, SK_ACTION);
-    assert(n < 100);
+    while ((g->mode == G_DIALOGUE || g->mode == G_CORRIDOR) && n++ < 400)
+        press(g, g->mode == G_CORRIDOR ? SK_RIGHT : SK_ACTION);
+    assert(n < 400);
 }
 static void inspect(Game *g, SkU8 hotspot) {
     const Hotspot *h = game_hotspot(g->room, hotspot);
@@ -329,7 +329,51 @@ static void test_radial_torch(void) {
             }
 }
 
+static void test_corridor(void) {
+    Game g;
+    SkInput in = none;
+    unsigned i;
+    game_new(&g);
+    press(&g, SK_ACTION);
+    press(&g, SK_ACTION);
+    assert(g.mode == G_CORRIDOR && g.x == CORRIDOR_START && g.page == 1);
+    for (i = 0; i < 30; ++i)
+        press(&g, SK_ACTION);
+    assert(g.x == CORRIDOR_START && g.mode == G_CORRIDOR);
+    in.held = SK_RIGHT;
+    for (i = 0; i < 100; ++i)
+        game_tick(&g, &in);
+    assert(g.x == 280 && game_corridor_scroll(&g) == 168);
+    assert(g.oil == 120 && g.fear == 0);
+    press(&g, SK_PAUSE);
+    game_tick(&g, &in);
+    assert(g.mode == G_PAUSE && g.x == 280);
+    press(&g, SK_BACK);
+    in.held = SK_LEFT;
+    for (i = 0; i < 120; ++i)
+        game_tick(&g, &in);
+    assert(g.x == CORRIDOR_START && game_corridor_scroll(&g) == 0);
+    in = none;
+    in.scope = in.aim_valid = in.fire = 1;
+    in.x = 221;
+    game_tick(&g, &in);
+    in.fire = 0;
+    for (i = 0; i < 80; ++i)
+        game_tick(&g, &in);
+    assert(g.x == 221);
+    in.held = SK_RIGHT;
+    for (i = 0; i < 130; ++i)
+        game_tick(&g, &in);
+    assert(g.mode == G_CORRIDOR && g.y < 110 && game_corridor_scroll(&g) == 256);
+    for (i = 0; i < 10; ++i)
+        game_tick(&g, &in);
+    assert(g.mode == G_DIALOGUE && g.page == 1 && g.x == 124 && g.y == 176);
+    finish(&g);
+    assert(g.mode == G_EXPLORE && g.room == 0);
+}
+
 int main(void) {
+    test_corridor();
     test_radial_torch();
     test_clock_and_text();
     test_light();

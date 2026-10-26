@@ -42,11 +42,16 @@ def report():
     if len(dim_maps) != 4 or any(p.stat().st_size != 2048 for p in dim_maps):
         raise ValueError('Expected four ambient maps')
     cinematics = {p.name: p.stat().st_size for p in assets.glob('cine*.chr')}
-    if len(cinematics) != 3 or max(cinematics.values()) > 24576:
-        raise ValueError('Cinematic tiles exceed the 768-tile budget')
+    if len(cinematics) != 3 or cinematics.get('cine0.chr') != 32768 or any(size > (32768 if name == 'cine0.chr' else 24576)
+                                    for name, size in cinematics.items()):
+        raise ValueError('Cinematic tiles exceed reserved VRAM')
     import struct
     for path in [*assets.glob('cine*.map'), *assets.glob('bg[2-5].map')]:
-        entries = struct.unpack('<1024H', path.read_bytes())
+        payload = path.read_bytes()
+        expected_size = 4096 if path.name == 'cine0.map' else 2048
+        if len(payload) != expected_size:
+            raise ValueError('Unexpected tile map size: ' + path.name)
+        entries = struct.unpack('<%dH' % (len(payload) // 2), payload)
         tile_count = path.with_suffix('.chr').stat().st_size // 32
         if any((entry & 1023) >= tile_count or ((entry >> 10) & 7) == 1 for entry in entries):
             raise ValueError('Invalid cinematic tile or reserved UI palette: ' + path.name)
@@ -66,7 +71,8 @@ def report():
               'ambient_map_bytes': 2048, 'font_bytes': font,
               'sprite_bytes': sprites, 'brr_payload_bytes': samples,
               'vram_actual_peak_bytes': max(max(backgrounds.values()) + 4096,
-                                             max(cinematics.values()) + 2048) + font + 2048 + sprites,
+                                             max(size + (4096 if name == 'cine0.chr' else 2048)
+                                                 for name, size in cinematics.items())) + font + 2048 + sprites,
               'rom_bytes': (ROOT / 'chernorechye.sfc').stat().st_size}
     (ROOT / 'build/memory.json').write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(result))

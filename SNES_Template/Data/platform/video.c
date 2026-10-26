@@ -3,7 +3,7 @@
 #include "../include/platform.h"
 #include "../include/ui_text.h"
 extern u8 bg0_tiles, bg0_tiles_end, bg0_map;
-extern u8 bg1_tiles, bg1_tiles_end, bg1_map;
+extern u8 bg1_tiles, bg1_tiles_end, bg1_map, bg1_palette;
 extern u8 bg2_tiles, bg2_tiles_end, bg2_map;
 extern u8 bg3_tiles, bg3_tiles_end, bg3_map;
 extern u8 bg4_tiles, bg4_tiles_end, bg4_map;
@@ -32,6 +32,7 @@ static SkS16 previous_x = 0, previous_y = 0, previous_enemy_x = 0, previous_enem
 static SkU8 cached_near = SK_NONE, near_direction = 255, near_lit = 255, near_room = 255;
 /* Applied in VBlank: splash and cinematic transitions use master brightness. */
 static SkU8 brightness = 15, scene_age = 0;
+static SkU16 camera_x = 0;
 static void ui_tile(SkU8 x, SkU8 y, SkU16 tile) {
     text_map[(SkU16)y * 32 + x] = tile | (7 << 10) | BG_TIL_PRIO;
 }
@@ -112,7 +113,8 @@ static void number(SkU8 x, SkU8 y, SkU16 value) {
 }
 static void background(SkU8 id) {
     u8 *tiles = 0, *end = 0, *map = 0, *dim = 0, *palette = &bg_palette;
-    SkU16 palette_bytes = 32;
+    SkU16 palette_bytes = 32, map_bytes = 2048;
+    SkU8 map_size = SC_32x32;
     if (current_bg == id)
         return;
     switch (id) {
@@ -122,10 +124,10 @@ static void background(SkU8 id) {
         map = &bg0_map;
         break;
     case 1:
-        tiles = &cine2_tiles;
-        end = &cine2_tiles_end;
-        map = &cine2_map;
-        palette = &cine2_palette;
+        tiles = &bg1_tiles;
+        end = &bg1_tiles_end;
+        map = &bg1_map;
+        palette = &bg1_palette;
         palette_bytes = 256;
         break;
     case 2:
@@ -153,8 +155,10 @@ static void background(SkU8 id) {
         palette_bytes = 256;
         break;
     case 6:
+        map_bytes = 4096;
+        map_size = SC_64x32;
         tiles = &cine0_tiles;
-        end = &cine0_tiles_end;
+        end = &cine0_tiles; /* A full LoROM bank has no 16-bit end pointer. */
         map = &cine0_map;
         palette = &cine0_palette;
         palette_bytes = 256;
@@ -191,8 +195,9 @@ static void background(SkU8 id) {
     }
     setScreenOff();
     REG_HDMAEN = 0;
-    bgInitTileSet(0, tiles, palette, 0, end - tiles, palette_bytes, BG_16COLORS, VIDEO_BG_TILES);
-    bgInitMapSet(0, map, 2048, SC_32x32, VIDEO_BG_MAP);
+    bgInitTileSet(0, tiles, palette, 0, id == 6 ? 32768 : end - tiles, palette_bytes,
+                  BG_16COLORS, VIDEO_BG_TILES);
+    bgInitMapSet(0, map, map_bytes, map_size, VIDEO_BG_MAP);
     bgSetScroll(0, 0, -1);
     bgSetDisable(1);
     if (dim) {
@@ -248,6 +253,8 @@ void video_commit(void) {
         dirty = 0;
     }
     flashlight_commit();
+    if (current_bg == 6)
+        bgSetScroll(0, camera_x, -1);
     REG_INIDISP = brightness;
 }
 static const char *notice_text(SkU8 notice) {
@@ -317,11 +324,22 @@ static void draw_actors(const Game *g) {
     previous_enemy_x = g->enemy_x;
     previous_enemy_y = g->enemy_y;
 }
+static void draw_corridor(const Game *g) {
+    SkS16 scroll = game_corridor_scroll(g);
+    SkU16 tile = g->x == previous_x ? 192 : 384 + ((g->tick / 6) % 7) * 2;
+    hide();
+    camera_x = scroll;
+    oamSet(0, g->x - scroll - 8, g->y - 32, 2, g->direction == 6, 0, tile, 0);
+    oamSetEx(0, OBJ_SMALL, OBJ_SHOW);
+    oamSet(40, g->x - scroll - 8, g->y - 16, 2, g->direction == 6, 0, tile + 32, 0);
+    oamSetEx(40, OBJ_SMALL, OBJ_SHOW);
+    previous_x = g->x;
+}
 static void draw_cinematic(const Game *g) {
     hide();
     if (g->page == 0) {
-        sprite(0, 72, 78, 192);
-        sprite(10, 72, 94, 224);
+        sprite(0, CORRIDOR_START - 8, 78, 192);
+        sprite(10, CORRIDOR_START - 8, 94, 224);
         sprite(3, 106, 105, 64 + ((g->tick >> 3) & 3) * 2);
         if (g->tick < 80 && ((g->tick >> 2) & 1)) {
             sprite(8, 177, 77, 196);
@@ -349,7 +367,7 @@ static void draw_torch(const Game *g) {
     }
 }
 void video_draw(const Game *g, SkU8 scope) {
-    SkU8 i, bg, near, changed, world, cinematic;
+    SkU8 i, bg, near, changed, world, cinematic, corridor;
     SkU16 keys[10];
     const StoryLine *line;
     near = SK_NONE;
@@ -388,18 +406,24 @@ void video_draw(const Game *g, SkU8 scope) {
         bg = 0;
     if (g->mode == G_MENU || g->mode == G_HELP || g->mode == G_CREDITS || g->mode == G_END)
         bg = 1;
+    corridor = g->mode == G_CORRIDOR ||
+               (g->mode == G_PAUSE && g->return_mode == G_CORRIDOR);
     cinematic = g->mode == G_DIALOGUE && g->dialogue == D_PROLOG;
     if (cinematic)
         bg = g->page < 3 ? 6 + g->page : 9;
+    if (corridor)
+        bg = 6;
     world = bg >= 2 && bg <= 5;
     changed = current_bg != bg;
     background(bg);
-    if (changed)
+    if (changed) {
         hide();
+        camera_x = 0;
+    }
     brightness = 15;
     if (scene_age < 30)
         ++scene_age;
-    if (cinematic && scene_age < 30)
+    if ((cinematic || g->mode == G_MENU) && scene_age < 30)
         brightness = scene_age >> 1;
     if (g->mode == G_SPLASH) {
         if (g->tick < 30)
@@ -415,6 +439,8 @@ void video_draw(const Game *g, SkU8 scope) {
         bgSetDisable(1);
     if (cinematic)
         draw_cinematic(g);
+    if (corridor)
+        draw_corridor(g);
     if (world) {
         draw_torch(g);
         /* Stable actors need no repeated OAM writes; movement and UI/flag
@@ -425,19 +451,18 @@ void video_draw(const Game *g, SkU8 scope) {
         draw_actors(g);
     }
     if (g->mode == G_SPLASH) {
-        text(12, 16, "NABLA");
-        text(8, 19, "INTERACTIVE STORIES");
-        text(8, 24, "1193 / NOVGOROD");
+        text(11, 16, "NABLA TEAM");
+        text(11, 19, "PRESENTS");
+        bgSetScroll(0, 0, g->tick < 30 ? (30 - g->tick) / 2 - 1 : -1);
     } else if (g->mode == G_MENU) {
-        text(2, 2, TXT_TITLE);
-        text(2, 4, TXT_SUBTITLE);
-        text(2, 6, TXT_YEAR);
-        panel(19, 9);
-        text(6, 20, TXT_NEW);
-        text(6, 22, TXT_HELP);
-        text(6, 24, TXT_CREDITS);
-        text(3, 20 + g->option * 2, ">");
-        text(2, 27, TXT_PRESS);
+        text(3, 3, TXT_TITLE);
+        text(3, 5, TXT_SUBTITLE);
+        text(3, 7, TXT_YEAR);
+        text(4, 11, TXT_NEW);
+        text(4, 14, TXT_HELP);
+        text(4, 17, TXT_CREDITS);
+        text(2, 11 + g->option * 3, ">");
+        text(3, 25, TXT_PRESS);
     } else if (g->mode == G_HELP || g->mode == G_CREDITS) {
         panel(2, 26);
         text(1, 3, g->mode == G_HELP ? TXT_HELP_TEXT : TXT_CREDITS_TEXT);
@@ -456,6 +481,11 @@ void video_draw(const Game *g, SkU8 scope) {
         }
         text(1, 26, line && g->revealed < line->length ? TXT_MORE : TXT_CONTINUE);
         number(28, 27, g->page + 1);
+    } else if (g->mode == G_CORRIDOR) {
+        text(1, 1, TXT_PROLOG_CORRIDOR);
+        panel(23, 5);
+        text(2, 24, TXT_CORRIDOR_WALK);
+        text(2, 26, TXT_CORRIDOR_HINT);
     } else if (g->mode == G_EXPLORE) {
         panel(0, 3);
         text(1, 1, TXT_OIL);

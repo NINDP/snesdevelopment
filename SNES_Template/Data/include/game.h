@@ -13,7 +13,8 @@ enum GameMode {
     G_END,
     G_HELP,
     G_CREDITS,
-    G_BELL
+    G_BELL,
+    G_CORRIDOR
 };
 enum StoryFlag {
     F_HEAD = 1,
@@ -96,6 +97,9 @@ typedef struct {
     SkU8 memories, echo_charge, wards, bell_step, ward_timer, text_delay;
 } Game;
 #define TORCH_RADIUS 64
+#define CORRIDOR_START 80
+#define CORRIDOR_END 488
+SkS16 game_corridor_scroll(const Game *g);
 extern const SkU8 torch_width[TORCH_RADIUS + 1];
 void game_init(Game *g);
 void game_new(Game *g);

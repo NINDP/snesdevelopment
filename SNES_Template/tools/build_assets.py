@@ -131,14 +131,22 @@ def map_dungeon():
     return im
 def title():
     im,d=canvas(); rng=random.Random(1193)
-    for _ in range(70): d.point((rng.randrange(256),rng.randrange(100)),fill=rng.choice([2,3,5]))
-    d.ellipse((160,25,196,61),fill=7); d.ellipse((149,20,184,57),fill=0)
-    for x in range(-16,272,23): tree(d,x,94+(x%3)*6)
-    d.rectangle((0,131,255,223),fill=1)
-    for y in range(138,224,9): d.line((0,y,255,y),fill=2)
-    d.polygon([(71,127),(128,83),(185,127)],fill=3,outline=6)
-    d.rectangle((82,128,174,168),fill=2); d.rectangle((117,136,139,168),fill=0)
-    d.line((128,92,128,114),fill=8,width=2); d.line((121,99,135,99),fill=8,width=2)
+    colors=list(PALETTE)
+    colors[:7]=[(6,5,8),(13,9,18),(19,14,24),(26,18,16),
+                (34,24,16),(54,38,24),(190,158,96)]
+    im.putpalette([v for c in colors for v in c]+[0]*(768-48))
+    d.rectangle((0,0,255,223),fill=1)
+    for x,color in ((90,2),(60,3),(32,4),(16,5)):
+        d.rectangle((0,0,x,144),fill=color)
+    for x,y,w in ((94,54,24),(122,74,29),(156,46,24),(183,86,35),(223,64,30)):
+        d.rectangle((x,y,x+w,223),fill=0)
+        for yy in range(y+22,176,19):
+            d.rectangle((x+6,yy,x+8,yy+2),fill=5)
+    d.rectangle((0,184,255,223),fill=0)
+    d.line((87,0,87,184),fill=6)
+    for _ in range(32):
+        x=rng.randrange(92,256); y=rng.randrange(24,184)
+        d.point((x,y),fill=2)
     return im
 def splash():
     im,d=canvas()
@@ -199,6 +207,11 @@ def atlas():
         actor=Image.open(source/name).convert('RGBA').resize((16,32),Image.Resampling.NEAREST)
         indexed=actor.convert('RGB').quantize(palette=fixed,dither=Image.Dither.NONE)
         im.paste(indexed,(n*16,96),actor.getchannel('A'))
+    for n in range(7):
+        actor=Image.open(source/('SceneTwoMainCharacterRunRight%d.png'%(n+1))).convert('RGBA')
+        actor=actor.resize((16,32),Image.Resampling.NEAREST)
+        im.paste(actor.convert('RGB').quantize(palette=fixed,dither=Image.Dither.NONE),
+                 (n*16,192),actor.getchannel('A'))
     for n in range(4):
         coin=Image.open(source/('HudCoinSpin%d.png'%(n+1))).convert('RGBA')
         coin=coin.resize((16,16),Image.Resampling.NEAREST)
@@ -267,7 +280,7 @@ def planar(tile,bpp):
 
 def tile_image(im,dedupe=True,bpp=4,max_tiles=512,palette_tiles=False):
     pixels=list(flat_pixels(im)); w,h=im.size
-    tiles=[]; index={}; tilemap=[0]*1024
+    tiles=[]; index={}; tilemap=[0]*(1024*max(1,w//256))
     for ty in range(h//8):
         for tx in range(w//8):
             tile=tuple(pixels[(ty*8+y)*w+tx*8+x] for y in range(8) for x in range(8))
@@ -279,9 +292,9 @@ def tile_image(im,dedupe=True,bpp=4,max_tiles=512,palette_tiles=False):
                 tile=tuple(pixel&15 for pixel in tile)
             if not dedupe or tile not in index:
                 index[tile]=len(tiles); tiles.append(tile)
-            tilemap[ty*32+tx]=index[tile]|(palette<<10)
+            tilemap[(tx//32)*1024+ty*32+tx%32]=index[tile]|(palette<<10)
     if dedupe and len(tiles)>max_tiles: raise ValueError('BG exceeds tile budget: '+str(len(tiles)))
-    return b''.join(planar(t,bpp) for t in tiles),struct.pack('<1024H',*tilemap)
+    return b''.join(planar(t,bpp) for t in tiles),struct.pack('<%dH'%len(tilemap),*tilemap)
 
 def main():
     from build_cinematics import scenes, world_scenes
@@ -295,7 +308,7 @@ def main():
         assembly += ['.section "%s" superfree'%name, name+'_tiles:',
                      '.incbin "assets/generated/%s.chr"'%name,name+'_tiles_end:',
                      name+'_map:', '.incbin "assets/generated/%s.map"'%name]
-        if i>=2:
+        if i>=1:
             pal=im.getpalette()[:384]
             colors=struct.pack('<128H',*(pal[n]//8+(pal[n+1]//8)*32+(pal[n+2]//8)*1024
                                         for n in range(0,384,3)))
@@ -311,7 +324,10 @@ def main():
             assembly+=['.section "%s_dim" superfree'%name,name+'_dim:',
                        '.incbin "assets/generated/%s.dimmap"'%name,'.ends','']
     for i,im in enumerate(scenes()):
-        name='cine%d'%i; tiles,tilemap=tile_image(im,max_tiles=768,palette_tiles=True)
+        name='cine%d'%i; tiles,tilemap=tile_image(im,max_tiles=1024 if i==0 else 768,palette_tiles=True)
+        if i==0:
+            # Reserve a whole LoROM bank so DMA never crosses a bank boundary.
+            tiles=tiles.ljust(32768,b'\0')
         pal=im.getpalette()[:384]
         palette=struct.pack('<128H',*(pal[n]//8+(pal[n+1]//8)*32+(pal[n+2]//8)*1024
                                      for n in range(0,384,3)))
@@ -320,7 +336,7 @@ def main():
         im.convert('RGB').save(OUT/(name+'.png'))
         assembly+=['.section "%s" superfree'%name,name+'_tiles:',
                    '.incbin "assets/generated/%s.chr"'%name,name+'_tiles_end:',
-                   name+'_map:','.incbin "assets/generated/%s.map"'%name,
+                   '.ends', '.section "%s_map" superfree'%name, name+'_map:','.incbin "assets/generated/%s.map"'%name,
                    name+'_palette:','.incbin "assets/generated/%s.pal"'%name,'.ends','']
         print(name,len(tiles)//32,'tiles')
     palette=struct.pack('<16H',*[r//8+(g//8)*32+(b//8)*1024 for r,g,b in PALETTE])

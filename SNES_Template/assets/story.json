@@ -585,7 +585,10 @@
     "WARD_HELP": "B: ОТВЕСТИ ТЕНЬ СЕРЕБРОМ.",
     "PROLOG_GYM": "НОВГУ · ПОСЛЕ ТЕНИ",
     "PROLOG_CELLAR": "НОВГУ · ПОДВАЛ",
-    "PROLOG_PAST": "ЧЕРНОРЕЧЬЕ · 1193"
+    "PROLOG_PAST": "ЧЕРНОРЕЧЬЕ · 1193",
+    "PROLOG_CORRIDOR": "НОВГУ / КОРИДОР",
+    "CORRIDOR_WALK": "КРЕСТОВИНА: БЕЖАТЬ",
+    "CORRIDOR_HINT": "ВПРАВО — К ЛЕСТНИЦЕ"
   },
   "choices": [
     [

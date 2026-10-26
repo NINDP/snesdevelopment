@@ -7,15 +7,17 @@ SOURCE = Path(__file__).resolve().parents[1] / 'assets/cinematics'
 
 
 def indexed_scene(name, height=144, banks=(0, 2, 3, 4, 5, 6, 7), world=False):
-    source = Image.open(SOURCE / name).convert('RGB')
+    source = name.convert('RGB') if isinstance(name, Image.Image) else Image.open(SOURCE / name).convert('RGB')
+    width = source.width if isinstance(name, Image.Image) else 256
     if world:
-        width, source_height = source.size
-        source = source.crop((0, source_height*24//224, width, source_height*192//224))
-    source = source.resize((256, height), Image.Resampling.LANCZOS)
+        source_width, source_height = source.size
+        source = source.crop((0, source_height*24//224, source_width, source_height*192//224))
+    source = source.resize((width, height), Image.Resampling.LANCZOS)
     # Seven native 16-color banks. Bank 1 is reserved for the text layer.
     # Cluster 8x8 tiles, then derive a local palette for each cluster.
     pixels = np.asarray(source, dtype=np.int32)
-    tiles = pixels.reshape(height//8, 8, 32, 8, 3).transpose(0, 2, 1, 3, 4).reshape(-1, 64, 3)
+    columns = width // 8
+    tiles = pixels.reshape(height//8, 8, columns, 8, 3).transpose(0, 2, 1, 3, 4).reshape(-1, 64, 3)
     features = np.concatenate((tiles.mean(axis=1), tiles.std(axis=1)), axis=1)
     centers = [features[np.argmin(features[:, :3].sum(axis=1))]]
     for _ in range(len(banks)-1):
@@ -28,7 +30,7 @@ def indexed_scene(name, height=144, banks=(0, 2, 3, 4, 5, 6, 7), world=False):
             if np.any(labels == group):
                 centers[group] = features[labels == group].mean(axis=0)
     palette = [0] * 384
-    indexed = np.zeros((height, 256), dtype=np.uint8)
+    indexed = np.zeros((height, width), dtype=np.uint8)
     for group, bank in enumerate(banks):
         members = np.flatnonzero(labels == group)
         if not len(members):
@@ -40,11 +42,11 @@ def indexed_scene(name, height=144, banks=(0, 2, 3, 4, 5, 6, 7), world=False):
         palette[bank*48+3:bank*48+48] = colors.reshape(-1).tolist()
         for member in members:
             values = ((tiles[member, :, None, :] - colors[None, :, :])**2).sum(axis=2).argmin(axis=1)
-            y, x = divmod(int(member), 32)
+            y, x = divmod(int(member), columns)
             indexed[y*8:y*8+8, x*8:x*8+8] = (values.reshape(8, 8) + 1 + bank*16)
-    scene = Image.new('P', (256, 224), 0)
+    scene = Image.new('P', (width, 224), 0)
     scene.putpalette(palette + [0] * (768 - len(palette)))
-    image = Image.frombytes('P', (256, height), indexed.tobytes())
+    image = Image.frombytes('P', (width, height), indexed.tobytes())
     scene.paste(image, (0, 24 if world else 0))
     if world:
         for bright, dim in ((0, 2), (3, 5), (4, 6)):
@@ -59,7 +61,15 @@ def indexed_scene(name, height=144, banks=(0, 2, 3, 4, 5, 6, 7), world=False):
 
 
 def scenes():
-    return [indexed_scene('OpeningGymScene.png', 128),
+    # Both screens share tiles and palettes: crossing the doorway needs only
+    # BG1 scroll writes, with no forced blank, DMA or palette replacement.
+    panorama = Image.new('RGB', (512, 128))
+    for column, name in enumerate(('OpeningGymScene.png', 'Scene2Corridor.png')):
+        panorama.paste(Image.open(SOURCE / name).convert('RGB').resize(
+            (256, 128), Image.Resampling.LANCZOS), (column * 256, 0))
+    panorama = indexed_scene(panorama, 128)
+    panorama.paste(0, (0, 0, 8, 8))
+    return [panorama,
             indexed_scene('basement.png'), indexed_scene('arrival-torch.png')]
 
 

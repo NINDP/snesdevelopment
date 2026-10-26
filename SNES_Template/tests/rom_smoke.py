@@ -18,6 +18,10 @@ class Runner:
         self.e.gun_tap(2,x,y) if self.scope else self.e.tap(8)
     def finish(self):
         for _ in range(80):
+            if self.e.state()['mode']==12:
+                self.e.buttons={7}
+                self.e.wait_state(lambda s:s['mode']!=12,'Corridor exit',limit=600)
+                self.e.buttons=set()
             if self.e.state()['mode']!=2:return
             self.action()
         raise AssertionError('Dialogue stuck: '+str(self.e.state()))
@@ -149,7 +153,7 @@ def run(core,ending,pal=False,scope=False):
     e.run(20);r.capture('nabla');e.run(170)
     assert e.state()['mode']==1;r.capture('menu')
     if scope:
-        e.tap(2);e.gun_tap(2,128,112);e.gun_tap(3,128,112);r.action(128,160)
+        e.tap(2);e.gun_tap(2,128,112);e.gun_tap(3,128,112);r.action(64,88)
     else:
         e.tap(5);e.tap(8);e.wait_mode(9)
         r.capture('controls');e.tap(0);e.wait_mode(1);r.action()
@@ -164,6 +168,37 @@ def run(core,ending,pal=False,scope=False):
             r.action()
             if e.state()['mode']!=2 or e.state()['page']!=page:break
         else:raise AssertionError('Prologue page did not advance: '+str(e.state()))
+        if page == 0:
+            e.wait_mode(12)
+            before=e.state()
+            r.capture('corridor-start')
+            start_pixels=np.array(e.frame).copy()
+            e.run(24)
+            assert e.state()['x']==before['x'],'Corridor must wait for movement'
+            if scope:
+                e.gun_tap(2,240,108)
+            else:e.buttons={7}
+            e.wait_state(lambda s:s['x']>=180,'Corridor movement')
+            r.capture('corridor-doorway')
+            e.buttons=set()
+            e.tap(3);e.wait_mode(7)
+            stopped=e.state()['x'];e.run(20)
+            assert e.state()['x']==stopped,'Pause moved corridor player'
+            e.tap(0);e.wait_mode(12)
+            if not scope:e.buttons={7}
+            captured_stairs=False
+            for _ in range(1200):
+                if e.state()['mode']!=12:break
+                if scope:e.gun_tap(2,248,108)
+                else:e.run(1)
+                if e.state()['mode']==12 and e.state()['x']>=350 and not captured_stairs:
+                    r.capture('corridor-stairs')
+                    assert np.count_nonzero(start_pixels[24:124]!=np.array(e.frame)[24:124])>4000,'Camera did not scroll background'
+                    captured_stairs=True
+            else:raise AssertionError('Corridor exit stuck: '+str(e.state()))
+            e.buttons=set();e.gun=set()
+            assert captured_stairs,'Stairs were never reached'
+            assert e.state()['mode']==2 and e.state()['page']==1,e.state()
     e.wait_mode(3)
     # The footer border starts on scanline 191 because BG3 scrolls by -1.
     r.capture('lamp-off');off=np.array(e.frame)[24:191]
