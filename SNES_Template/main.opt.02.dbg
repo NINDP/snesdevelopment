@@ -1,0 +1,227 @@
+.include "hdr.asm"
+.accu 16
+.index 16
+.16bit
+.define __StateMachineChange_locals 8
+.define __main_locals 12
+
+.SECTION ".StateMachineChangetext_0x0" SUPERFREE
+
+StateMachineChange:
+.ifgr __StateMachineChange_locals 0
+tsa
+sec
+sbc #__StateMachineChange_locals
+tas
+.endif
+lda.l StateNumber + 0
+clc
+adc.w #3
+asl a
+asl a
+sta.b tcc__r0
+lda.w #:StateManager
+sta.b tcc__r1h
+lda.w #StateManager + 0
+clc
+adc.b tcc__r0
+sta.b tcc__r1
+sta -4 + __StateMachineChange_locals + 1,s
+lda.b tcc__r1h
+sta -2 + __StateMachineChange_locals + 1,s
+lda -4 + __StateMachineChange_locals + 1,s
+sta.b tcc__r9
+lda -2 + __StateMachineChange_locals + 1,s
+sta.b tcc__r9h
+jsr.l tcc__jsl_ind_r9
+lda.l ChangeState + 0
+sta.l StateNumber + 0
+lda.w #65535
+sta.l ChangeState + 0
+lda.l StateNumber + 0
+asl a
+asl a
+sta.b tcc__r0
+lda.w #:StateManager
+sta.b tcc__r1h
+lda.w #StateManager + 0
+clc
+adc.b tcc__r0
+sta.b tcc__r1
+sta -8 + __StateMachineChange_locals + 1,s
+lda.b tcc__r1h
+sta -6 + __StateMachineChange_locals + 1,s
+lda -8 + __StateMachineChange_locals + 1,s
+sta.b tcc__r9
+lda -6 + __StateMachineChange_locals + 1,s
+sta.b tcc__r9h
+jsr.l tcc__jsl_ind_r9
+.ifgr __StateMachineChange_locals 0
+tsa
+clc
+adc #__StateMachineChange_locals
+tas
+.endif
+rtl
+.ENDS
+
+.SECTION ".maintext_0x1" SUPERFREE
+
+main:
+.ifgr __main_locals 0
+tsa
+sec
+sbc #__main_locals
+tas
+.endif
+jsr.l spcBoot
+jsr.l consoleInit
+pea.w :SOUNDBANK__
+pea.w SOUNDBANK__ + 0
+jsr.l spcSetBank
+tsa
+clc
+adc #4
+tas
+lda.l StateNumber + 0
+asl a
+asl a
+sta.b tcc__r0
+lda.w #:StateManager
+sta.b tcc__r1h
+lda.w #StateManager + 0
+clc
+adc.b tcc__r0
+sta.b tcc__r1
+sta -4 + __main_locals + 1,s
+lda.b tcc__r1h
+sta -2 + __main_locals + 1,s
+lda -4 + __main_locals + 1,s
+sta.b tcc__r9
+lda -2 + __main_locals + 1,s
+sta.b tcc__r9h
+jsr.l tcc__jsl_ind_r9
+__local_1:
+lda.l StateNumber + 0
+sta.b tcc__r0
+inc.b tcc__r0
+asl.b tcc__r0
+asl.b tcc__r0
+lda.w #:StateManager
+sta.b tcc__r1h
+lda.w #StateManager + 0
+clc
+adc.b tcc__r0
+sta.b tcc__r1
+sta -8 + __main_locals + 1,s
+lda.b tcc__r1h
+sta -6 + __main_locals + 1,s
+lda -8 + __main_locals + 1,s
+sta.b tcc__r9
+lda -6 + __main_locals + 1,s
+sta.b tcc__r9h
+jsr.l tcc__jsl_ind_r9
+lda.l StateNumber + 0
+sta.b tcc__r0
+inc.b tcc__r0
+inc.b tcc__r0
+asl.b tcc__r0
+asl.b tcc__r0
+lda.w #:StateManager
+sta.b tcc__r1h
+lda.w #StateManager + 0
+clc
+adc.b tcc__r0
+sta.b tcc__r1
+sta -12 + __main_locals + 1,s
+lda.b tcc__r1h
+sta -10 + __main_locals + 1,s
+lda -12 + __main_locals + 1,s
+sta.b tcc__r9
+lda -10 + __main_locals + 1,s
+sta.b tcc__r9h
+jsr.l tcc__jsl_ind_r9
+jsr.l updateMusicManager
+lda.l ChangeState + 0
+sta.b tcc__r0
+ldx #1
+sec
+sbc #-1
+tay
+bne +
+dex
++
+stx.b tcc__r5
+txa
+bne +
+brl __local_0
++
+jsr.l StateMachineChange
+__local_0:
+jmp.w __local_1
+lda.w #0
+sta.b tcc__r0
+__local_2:
+.ifgr __main_locals 0
+tsa
+clc
+adc #__main_locals
+tas
+.endif
+rtl
+.ENDS
+.RAMSECTION "ram{WLA_FILENAME}.data" APPENDTO "globram.data"
+
+StateNumber dsb 2
+ChangeState dsb 2
+
+.ENDS
+
+.SECTION "{WLA_FILENAME}.data" APPENDTO "glob.data"
+
+.db $0,$0
+.db $ff,$ff
+.ENDS
+
+.SECTION ".rodata" SUPERFREE
+
+StateManager: .dw IntroStart + 0, :IntroStart
+.dw IntroUpdate + 0
+.dw :IntroUpdate
+.dw IntroDraw + 0
+.dw :IntroDraw
+.dw IntroEnd + 0
+.dw :IntroEnd
+.dw MenuStart + 0
+.dw :MenuStart
+.dw MenuUpdate + 0
+.dw :MenuUpdate
+.dw MenuDraw + 0
+.dw :MenuDraw
+.dw MenuEnd + 0
+.dw :MenuEnd
+.dw GameStart + 0
+.dw :GameStart
+.dw GameUpdate + 0
+.dw :GameUpdate
+.dw GameDraw + 0
+.dw :GameDraw
+.dw GameEnd + 0
+.dw :GameEnd
+.dw OverStart + 0
+.dw :OverStart
+.dw OverUpdate + 0
+.dw :OverUpdate
+.dw OverDraw + 0
+.dw :OverDraw
+.dw OverEnd + 0
+.dw :OverEnd
+.ENDS
+
+.RAMSECTION ".bss" BANK $7e SLOT 2
+.ENDS
+.SECTION ".rel.rodata" SUPERFREE
+
+.db $0,$0,$0,$0,$1,$5,$0,$0,$4,$0,$0,$0,$1,$6,$0,$0,$8,$0,$0,$0,$1,$7,$0,$0,$c,$0,$0,$0,$1,$8,$0,$0,$10,$0,$0,$0,$1,$9,$0,$0,$14,$0,$0,$0,$1,$a,$0,$0,$18,$0,$0,$0,$1,$b,$0,$0,$1c,$0,$0,$0,$1,$c,$0,$0,$20,$0,$0,$0,$1,$d,$0,$0,$24,$0,$0,$0,$1,$e,$0,$0,$28,$0,$0,$0,$1,$f,$0,$0,$2c,$0,$0,$0,$1,$10,$0,$0,$30,$0,$0,$0,$1,$11,$0,$0,$34,$0,$0,$0,$1,$12,$0,$0,$38,$0,$0,$0,$1,$13,$0,$0,$3c,$0,$0,$0,$1,$14,$0,$0
+.ENDS
+

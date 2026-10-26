@@ -1,0 +1,9 @@
+.build/
+bin
+docs
+tests
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+superfamiconv

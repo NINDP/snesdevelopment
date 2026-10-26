@@ -1,0 +1,14 @@
+[objects]
+main.obj
+Data/gameState.obj
+Data/introState.obj
+Data/menuState.obj
+Data/musicManager.obj
+Data/overState.obj
+Data/soundbank.obj
+data.obj
+hdr.obj
+/home/administrator/pvsneslib/pvsneslib/lib/LoROM_SlowROM/crt0_snes.obj
+/home/administrator/pvsneslib/pvsneslib/lib/LoROM_SlowROM/libc.obj
+/home/administrator/pvsneslib/pvsneslib/lib/LoROM_SlowROM/libm.obj
+/home/administrator/pvsneslib/pvsneslib/lib/LoROM_SlowROM/libtcc.obj

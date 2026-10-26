@@ -1,0 +1,87 @@
+.include "hdr.asm"
+.accu 16
+.index 16
+.16bit
+.define __updateMusicManager_locals 0
+.define __playMusic_locals 0
+
+.SECTION ".updateMusicManagertext_0x0" SUPERFREE
+
+updateMusicManager:
+; sub sp,#__updateMusicManager_locals
+.ifgr __updateMusicManager_locals 0
+tsa
+sec
+sbc #__updateMusicManager_locals
+tas
+.endif
+; call r 0x2f0
+jsr.l spcProcess
+; call r 0x2f0
+jsr.l WaitForVBlank
+; gsym_addr t 0 a 264 ind 264
+; ERROR no jump found to patch
+; add sp, #__updateMusicManager_locals
+.ifgr __updateMusicManager_locals 0
+tsa
+clc
+adc #__updateMusicManager_locals
+tas
+.endif
+rtl
+.ENDS
+
+.SECTION ".playMusictext_0x1" SUPERFREE
+
+playMusic:
+; sub sp,#__playMusic_locals
+.ifgr __playMusic_locals 0
+tsa
+sec
+sbc #__playMusic_locals
+tas
+.endif
+; ldpush before load type 0x0 reg 0x1f2
+; load 0
+; type 0 reg 0x1f2 extra 0x0
+; ld2 [sp,3],tcc__r0
+; stack adjust: fc + disp - loc - 256 -251
+lda 3 + __playMusic_locals + 1,s
+sta.b tcc__r0
+; ldpush2 (type 0x0 reg 0x0) tcc__r0
+pei (tcc__r0)
+; call r 0x2f0
+jsr.l spcLoad
+; add sp, #2
+pla
+; push2 imm r 0xf0
+pea.w 0
+; call r 0x2f0
+jsr.l spcPlay
+; add sp, #2
+pla
+; gsym_addr t 0 a 973 ind 973
+; ERROR no jump found to patch
+; add sp, #__playMusic_locals
+.ifgr __playMusic_locals 0
+tsa
+clc
+adc #__playMusic_locals
+tas
+.endif
+rtl
+.ENDS
+.RAMSECTION "ram{WLA_FILENAME}.data" APPENDTO "globram.data"
+
+.ENDS
+
+.SECTION "{WLA_FILENAME}.data" APPENDTO "glob.data"
+
+.ENDS
+
+.SECTION ".rodata" SUPERFREE
+
+.ENDS
+
+.RAMSECTION ".bss" BANK $7e SLOT 2
+.ENDS

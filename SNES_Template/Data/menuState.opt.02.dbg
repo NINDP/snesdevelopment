@@ -1,0 +1,351 @@
+.include "hdr.asm"
+.accu 16
+.index 16
+.16bit
+.define __MenuStart_locals 0
+.define __MenuUpdate_locals 2
+.define __MenuDraw_locals 22
+.define __MenuEnd_locals 0
+
+.SECTION ".MenuStarttext_0x0" SUPERFREE
+
+MenuStart:
+.ifgr __MenuStart_locals 0
+tsa
+sec
+sbc #__MenuStart_locals
+tas
+.endif
+lda.w #:TitlePic_end
+sta.b tcc__r0h
+lda.w #TitlePic_end + 0
+sta.b tcc__r0
+lda.w #:TitlePic
+lda.w #TitlePic + 0
+sta.b tcc__r1
+sec
+lda.b tcc__r0
+sbc.b tcc__r1
+sta.b tcc__r0
+lda.w #:TitlePal_end
+lda.w #TitlePal_end + 0
+sta.b tcc__r1
+lda.w #:TitlePal
+lda.w #TitlePal + 0
+sta.b tcc__r2
+sec
+lda.b tcc__r1
+sbc.b tcc__r2
+sta.b tcc__r1
+pea.w 16384
+pea.w 16
+pei (tcc__r1)
+pei (tcc__r0)
+sep #$20
+lda #0
+pha
+rep #$20
+pea.w :TitlePal
+pea.w TitlePal + 0
+pea.w :TitlePic
+pea.w TitlePic + 0
+sep #$20
+lda #0
+pha
+rep #$20
+jsr.l bgInitTileSet
+tsa
+clc
+adc #18
+tas
+lda.w #:TitleMap_end
+lda.w #TitleMap_end + 0
+sta.b tcc__r0
+lda.w #:TitleMap
+lda.w #TitleMap + 0
+sta.b tcc__r1
+sec
+lda.b tcc__r0
+sbc.b tcc__r1
+sta.b tcc__r0
+pea.w 0
+sep #$20
+lda #0
+pha
+rep #$20
+pei (tcc__r0)
+pea.w :TitleMap
+pea.w TitleMap + 0
+sep #$20
+lda #0
+pha
+rep #$20
+jsr.l bgInitMapSet
+tsa
+clc
+adc #10
+tas
+pea.w 0
+jsr.l playMusic
+pla
+pea.w 26624
+jsr.l consoleSetTextVramBGAdr
+pla
+pea.w 12288
+jsr.l consoleSetTextVramAdr
+pla
+pea.w 256
+jsr.l consoleSetTextOffset
+pla
+pea.w :FontPal
+pea.w FontPal + 0
+pea.w :FontPic
+pea.w FontPic + 0
+pea.w (32 * 256 + 1)
+sep #$20
+rep #$20
+jsr.l consoleInitText
+tsa
+clc
+adc #10
+tas
+pea.w 8192
+sep #$20
+lda #1
+pha
+rep #$20
+jsr.l bgSetGfxPtr
+tsa
+clc
+adc #3
+tas
+sep #$20
+lda #0
+pha
+rep #$20
+pea.w 26624
+sep #$20
+lda #1
+pha
+rep #$20
+jsr.l bgSetMapPtr
+tsa
+clc
+adc #4
+tas
+pea.w (0 * 256 + 1)
+sep #$20
+rep #$20
+jsr.l setMode
+pla
+pea.w (1 * 256 + 1)
+sep #$20
+rep #$20
+jsr.l setMode
+pla
+sep #$20
+lda #2
+pha
+rep #$20
+jsr.l bgSetDisable
+tsa
+clc
+adc #1
+tas
+sep #$20
+lda #2
+pha
+rep #$20
+jsr.l setFadeEffect
+tsa
+clc
+adc #1
+tas
+jsr.l setScreenOn
+stz.b tcc__r0
+lda.b tcc__r0
+sta.w menuTimer + 0
+.ifgr __MenuStart_locals 0
+tsa
+clc
+adc #__MenuStart_locals
+tas
+.endif
+rtl
+.ENDS
+
+.SECTION ".MenuUpdatetext_0x1" SUPERFREE
+
+MenuUpdate:
+.ifgr __MenuUpdate_locals 0
+tsa
+sec
+sbc #__MenuUpdate_locals
+tas
+.endif
+stz.b tcc__r0
+lda.b tcc__r0
+sta -2 + __MenuUpdate_locals + 1,s
+lda.l pad_keys + 0
+sta -2 + __MenuUpdate_locals + 1,s
+sta.b tcc__r0
+cmp #4096
+beq +
+brl __local_0
++
+lda.w #8
+sta.b tcc__r0
+sta.l ChangeState + 0
+__local_0:
+lda.w menuTimer + 0
+sta.b tcc__r0
+sta.b tcc__r1
+lda.b tcc__r0h
+sta.b tcc__r1h
+inc.b tcc__r0
+lda.b tcc__r0
+sta.w menuTimer + 0
+lda.w menuTimer + 0
+sta.b tcc__r0
+cmp #12000
+beq +
+brl __local_1
++
+sep #$20
+lda #1
+pha
+rep #$20
+jsr.l setFadeEffect
+tsa
+clc
+adc #1
+tas
+__local_1:
+lda.w menuTimer + 0
+sta.b tcc__r0
+cmp #12005
+beq +
+brl __local_2
++
+stz.b tcc__r0
+lda.b tcc__r0
+sta.l ChangeState + 0
+__local_2:
+.ifgr __MenuUpdate_locals 0
+tsa
+clc
+adc #__MenuUpdate_locals
+tas
+.endif
+rtl
+.ENDS
+
+.SECTION ".MenuDrawtext_0x2" SUPERFREE
+
+MenuDraw:
+.ifgr __MenuDraw_locals 0
+tsa
+sec
+sbc #__MenuDraw_locals
+tas
+.endif
+sep #$20
+lda.b #89
+sta -22 + __MenuDraw_locals + 1,s
+lda.b #102
+sta -21 + __MenuDraw_locals + 1,s
+lda.b #59
+sta -20 + __MenuDraw_locals + 1,s
+lda.b #118
+sta -19 + __MenuDraw_locals + 1,s
+lda.b #98
+sta -18 + __MenuDraw_locals + 1,s
+lda.b #110
+sta -17 + __MenuDraw_locals + 1,s
+lda.b #109
+sta -16 + __MenuDraw_locals + 1,s
+lda.b #116
+sta -15 + __MenuDraw_locals + 1,s
+lda.b #32
+sta -14 + __MenuDraw_locals + 1,s
+lda.b #114
+sta -13 + __MenuDraw_locals + 1,s
+lda.b #121
+sta -12 + __MenuDraw_locals + 1,s
+lda.b #106
+sta -11 + __MenuDraw_locals + 1,s
+lda.b #103
+sta -10 + __MenuDraw_locals + 1,s
+lda.b #114
+sta -9 + __MenuDraw_locals + 1,s
+lda.b #101
+sta -8 + __MenuDraw_locals + 1,s
+lda.b #32
+sta -7 + __MenuDraw_locals + 1,s
+lda.b #67
+sta -6 + __MenuDraw_locals + 1,s
+lda.b #110
+sta -5 + __MenuDraw_locals + 1,s
+lda.b #102
+sta -4 + __MenuDraw_locals + 1,s
+lda.b #104
+sta -3 + __MenuDraw_locals + 1,s
+lda.b #110
+sta -2 + __MenuDraw_locals + 1,s
+rep #$20
+lda.w #0
+sep #$20
+sta -1 + __MenuDraw_locals + 1,s
+rep #$20
+pea.w :tccs_{WLA_FILENAME}_L.{WLA_FILENAME}8
+pea.w tccs_{WLA_FILENAME}_L.{WLA_FILENAME}8 + 0
+pea.w 20
+pea.w 2
+jsr.l consoleDrawText
+tsa
+clc
+adc #8
+tas
+jsr.l WaitForVBlank
+.ifgr __MenuDraw_locals 0
+tsa
+clc
+adc #__MenuDraw_locals
+tas
+.endif
+rtl
+.ENDS
+
+.SECTION ".MenuEndtext_0x3" SUPERFREE
+
+MenuEnd:
+.ifgr __MenuEnd_locals 0
+tsa
+sec
+sbc #__MenuEnd_locals
+tas
+.endif
+.ifgr __MenuEnd_locals 0
+tsa
+clc
+adc #__MenuEnd_locals
+tas
+.endif
+rtl
+.ENDS
+.RAMSECTION "ram{WLA_FILENAME}.data" APPENDTO "globram.data"
+
+.ENDS
+
+.SECTION "{WLA_FILENAME}.data" APPENDTO "glob.data"
+
+.ENDS
+
+.SECTION ".rodata" SUPERFREE
+
+tccs_{WLA_FILENAME}_L.{WLA_FILENAME}8: .db $4e,$68,$74,$2c,$65,$74,$6e,$63,$7a,$20,$72,$6a,$76,$66,$79,$6c,$66,$20,$6c,$6b,$7a,$20,$67,$68,$6a,$74,$72,$6e,$66,$0
+.ENDS
+
+.RAMSECTION ".bss" BANK $7e SLOT 2
+menuTimer dsb 2
+.ENDS

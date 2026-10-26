@@ -1,0 +1,39 @@
+/*****************************************************************************/
+/*  Автор         		: Дракончик				                             */
+/*  Приставка     		: Super Nintendo Entertainment System	             */
+/*  Язык	      		: GNU TCC C                                          */
+/*                                                                           */
+/*  Содержимое файла	: Данние для игравой стадии	                         */
+/*  Атрибут файла		: EXTERNAL                                           */
+/*  Имя файла     		: gameState.ext                                      */
+/*                                                                           */
+/*****************************************************************************/
+
+extern int StateNumber;
+extern int ChangeState;
+
+extern char FontPic;
+extern char FontPic_end;
+
+extern char FontPal;
+extern char FontPal_end;
+
+extern char UniHallPic;
+extern char UniHallPic_end;
+
+extern char UniHallPal;
+extern char UniHallPal_end;
+
+extern char UniHallMap;
+extern char UniHallMap_end;
+
+extern char UniExtPic;
+extern char UniExtPic_end;
+
+extern char UniExtPal;
+extern char UniExtPal_end;
+
+extern char UniExtMap;
+extern char UniExtMap_end;
+
+

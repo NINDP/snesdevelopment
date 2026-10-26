@@ -1,0 +1,113 @@
+.include "hdr.asm"
+.accu 16
+.index 16
+.16bit
+.define __GameStart_locals 0
+.define __GameUpdate_locals 0
+.define __GameDraw_locals 0
+.define __GameEnd_locals 0
+
+.SECTION ".GameStarttext_0x0" SUPERFREE
+
+GameStart:
+; sub sp,#__GameStart_locals
+.ifgr __GameStart_locals 0
+tsa
+sec
+sbc #__GameStart_locals
+tas
+.endif
+; gsym_addr t 0 a 152 ind 152
+; ERROR no jump found to patch
+; add sp, #__GameStart_locals
+.ifgr __GameStart_locals 0
+tsa
+clc
+adc #__GameStart_locals
+tas
+.endif
+rtl
+.ENDS
+
+.SECTION ".GameUpdatetext_0x1" SUPERFREE
+
+GameUpdate:
+; sub sp,#__GameUpdate_locals
+.ifgr __GameUpdate_locals 0
+tsa
+sec
+sbc #__GameUpdate_locals
+tas
+.endif
+; gsym_addr t 0 a 480 ind 480
+; ERROR no jump found to patch
+; add sp, #__GameUpdate_locals
+.ifgr __GameUpdate_locals 0
+tsa
+clc
+adc #__GameUpdate_locals
+tas
+.endif
+rtl
+.ENDS
+
+.SECTION ".GameDrawtext_0x2" SUPERFREE
+
+GameDraw:
+; sub sp,#__GameDraw_locals
+.ifgr __GameDraw_locals 0
+tsa
+sec
+sbc #__GameDraw_locals
+tas
+.endif
+; gsym_addr t 0 a 801 ind 801
+; ERROR no jump found to patch
+; add sp, #__GameDraw_locals
+.ifgr __GameDraw_locals 0
+tsa
+clc
+adc #__GameDraw_locals
+tas
+.endif
+rtl
+.ENDS
+
+.SECTION ".GameEndtext_0x3" SUPERFREE
+
+GameEnd:
+; sub sp,#__GameEnd_locals
+.ifgr __GameEnd_locals 0
+tsa
+sec
+sbc #__GameEnd_locals
+tas
+.endif
+; gsym_addr t 0 a 1111 ind 1111
+; ERROR no jump found to patch
+; add sp, #__GameEnd_locals
+.ifgr __GameEnd_locals 0
+tsa
+clc
+adc #__GameEnd_locals
+tas
+.endif
+rtl
+.ENDS
+.RAMSECTION "ram{WLA_FILENAME}.data" APPENDTO "globram.data"
+
+gamepadInput dsb 2
+
+.ENDS
+
+.SECTION "{WLA_FILENAME}.data" APPENDTO "glob.data"
+
+.db $0,$0
+.ENDS
+
+.SECTION ".rodata" SUPERFREE
+
+.ENDS
+
+.RAMSECTION ".bss" BANK $7e SLOT 2
+.ENDS
