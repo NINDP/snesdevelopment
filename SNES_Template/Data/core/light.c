@@ -28,6 +28,7 @@ void light_span(const Game *g, SkS16 y, SkS16 *left, SkS16 *right) {
     *left = a;
     *right = b;
 }
+#ifndef SNES_TARGET
 SkU8 light_sees(const Game *g, SkS16 x, SkS16 y) {
     SkS16 a, b;
     if (y < 24 || y >= 192)
@@ -35,6 +36,7 @@ SkU8 light_sees(const Game *g, SkS16 x, SkS16 y) {
     light_span(g, y, &a, &b);
     return a <= b && x >= a && x <= b;
 }
+#endif
 SkU8 light_direction(SkS16 dx, SkS16 dy) {
     SkS16 ax = dx < 0 ? -dx : dx, ay = dy < 0 ? -dy : dy;
     if (!ax && !ay)

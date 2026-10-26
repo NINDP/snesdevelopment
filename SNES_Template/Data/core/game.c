@@ -429,6 +429,42 @@ static void move_player(Game *g, const SkInput *in) {
     if (game_can_walk(g->room, g->x, ny))
         g->y = ny;
 }
+SkS16 game_corridor_scroll(const Game *g) {
+    if (g->x < 112)
+        return 0;
+    return g->x > 368 ? 256 : g->x - 112;
+}
+static void corridor_tick(Game *g, const SkInput *in) {
+    SkS16 target;
+    if (in->scope && in->aim_valid && in->fire && !in->offscreen)
+        g->destination_x = in->x + game_corridor_scroll(g);
+    if (in->held & SK_RIGHT)
+        g->destination_x = CORRIDOR_END;
+    else if (in->held & SK_LEFT)
+        g->destination_x = CORRIDOR_START;
+    else if (!in->scope)
+        g->destination_x = g->x;
+    target = g->destination_x;
+    if (target > g->x) {
+        g->direction = 2;
+        g->x += target - g->x > 1 ? 2 : 1;
+    } else if (target < g->x) {
+        g->direction = 6;
+        g->x -= g->x - target > 1 ? 2 : 1;
+    }
+    if (g->x < CORRIDOR_START)
+        g->x = CORRIDOR_START;
+    if (g->x > CORRIDOR_END)
+        g->x = CORRIDOR_END;
+    g->y = g->x > 464 ? 110 - (g->x - 464) * 2 : 110;
+    if (g->x == CORRIDOR_END) {
+        g->mode = G_DIALOGUE;
+        g->x = 124;
+        g->y = 176;
+        g->destination_x = g->x;
+        g->destination_y = g->y;
+    }
+}
 static void tick_environment(Game *g) {
     SkU8 i;
     const Hotspot *h;
@@ -504,9 +540,14 @@ void game_tick(Game *g, const SkInput *in) {
         if (advance) {
             if (g->option == 0)
                 g->mode = g->return_mode;
-            else if (g->option == 1)
-                game_checkpoint(g);
-            else {
+            else if (g->option == 1) {
+                if (g->return_mode == G_CORRIDOR) {
+                    g->mode = G_CORRIDOR;
+                    g->x = g->destination_x = CORRIDOR_START;
+                    g->y = 110;
+                } else
+                    game_checkpoint(g);
+            } else {
                 game_init(g);
                 g->mode = G_MENU;
             }
@@ -514,13 +555,18 @@ void game_tick(Game *g, const SkInput *in) {
         return;
     }
     if ((in->pressed & SK_PAUSE) &&
-        ((g->mode >= G_DIALOGUE && g->mode <= G_JOURNAL) || g->mode == G_BELL)) {
+        ((g->mode >= G_DIALOGUE && g->mode <= G_JOURNAL) || g->mode == G_BELL ||
+         g->mode == G_CORRIDOR)) {
         g->return_mode = g->mode;
         g->mode = G_PAUSE;
         g->option = 0;
         return;
     }
     ++g->tick;
+    if (g->mode == G_CORRIDOR) {
+        corridor_tick(g, in);
+        return;
+    }
     if (g->mode == G_SPLASH) {
         if (g->tick >= 150 || advance || (in->pressed & SK_PAUSE)) {
             g->mode = G_MENU;
@@ -534,7 +580,7 @@ void game_tick(Game *g, const SkInput *in) {
         if (in->pressed & SK_DOWN)
             g->option = (g->option + 1) % 3;
         if (in->scope && in->aim_valid)
-            g->option = in->y < 168 ? 0 : (in->y < 184 ? 1 : 2);
+            g->option = in->y < 104 ? 0 : (in->y < 128 ? 1 : 2);
         if (advance || (in->pressed & SK_PAUSE)) {
             if (!g->option)
                 game_new(g);
@@ -571,6 +617,12 @@ void game_tick(Game *g, const SkInput *in) {
                 ++g->page;
                 g->revealed = 0;
                 g->text_delay = 0;
+                if (g->dialogue == D_PROLOG && g->page == 1) {
+                    g->mode = G_CORRIDOR;
+                    g->x = g->destination_x = CORRIDOR_START;
+                    g->y = 110;
+                    g->direction = 2;
+                }
                 if (g->page >= story_pages(g->dialogue))
                     finish_dialogue(g);
             }
@@ -661,9 +713,7 @@ void game_tick(Game *g, const SkInput *in) {
             if (nearby == SK_NONE)
                 return;
             point = game_hotspot(g->room, nearby);
-            if (distance(in->x, point->x) > 18)
-                return;
-            if (distance(in->y, point->y) > 18)
+            if (distance(in->x, point->x) + distance(in->y, point->y) > 14)
                 return;
         }
         interact(g, nearby);

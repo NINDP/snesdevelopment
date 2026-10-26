@@ -43,3 +43,14 @@ Gameplay flame frames, ember pixels and the unlit shaft are authored in
 build_assets.py and exported as assets/generated/torch-sheet.png.
 
 Edit target: image 1, the existing pixel-art Chornorechye body-swap river scene. Change ONLY the medieval man's handheld lantern into a burning wooden TORCH. His hand must grip a dark wrapped wooden torch shaft in the exact location of the old lantern handle, with a lively orange-gold flame, a few small rising ember pixels, and a little heat shimmer immediately over the flame. Preserve the character, his pose, the reflected modern Kirill, all composition, village, chapel, trees, river, moon, pixel-art style, crop and color palette. Keep the existing warm light pool and reflection on water, now originating from the torch. No lantern remains. No new text, no labels, no UI, no watermark. Output the complete edited scene.
+
+## Corridor and running frames
+
+`Scene2Corridor.png` and `SceneTwoMainCharacterRunRight2..7.png` are copied
+unchanged from `alman790/Novgu-Biohazard`, commit
+`21c43ed11999af7799ee3b2488d9f261b37179b2`, `assets/source/`.
+The existing MIT notice covers these assets. Together with OpeningGymScene
+they form one 512-pixel panorama. All seven original running poses are
+converted into the OBJ atlas; camera scroll and stair movement are runtime code.
+The title backdrop is drawn in build_assets.py following the first game's
+MenuScene composition: warm light on the left, dark city silhouettes on the right.
