@@ -95,7 +95,8 @@ typedef struct {
     SkS16 x, y, destination_x, destination_y, enemy_x, enemy_y;
     SkU8 memories, echo_charge, wards, bell_step, ward_timer, text_delay;
 } Game;
-extern const SkS16 beam_spans[8][49][2];
+#define TORCH_RADIUS 64
+extern const SkU8 torch_width[TORCH_RADIUS + 1];
 void game_init(Game *g);
 void game_new(Game *g);
 void game_tick(Game *g, const SkInput *input);

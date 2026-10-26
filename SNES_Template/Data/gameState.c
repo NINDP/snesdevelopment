@@ -77,7 +77,7 @@ static void calibrate(void) {
     }
     if (!calibration) {
         setPaletteColor(29, RGB5(28, 28, 24));
-        setPaletteColor(30, 0);
+        setPaletteColor(30, RGB5(1, 2, 3));
     }
 }
 /* Template lifecycle: one input/update pass and one draw pass per VBlank. */

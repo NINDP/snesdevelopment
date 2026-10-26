@@ -96,7 +96,10 @@ static void test_light(void) {
     g.y = 140;
     g.direction = 0;
     assert(light_sees(&g, 128, 80));
-    assert(!light_sees(&g, 128, 180));
+    assert(light_sees(&g, 128, 180));
+    assert(light_sees(&g, 188, 132));
+    assert(light_sees(&g, 68, 132));
+    assert(!light_sees(&g, 194, 132));
     assert(!light_sees(&g, 10, 80));
     g.lamp = 0;
     assert(!light_sees(&g, 128, 140));
@@ -293,43 +296,41 @@ static void test_optional_systems(void) {
     assert(g.room == 0);
 }
 
-static void test_beam_equivalence(void) {
+static void test_radial_torch(void) {
     Game g;
-    SkS16 a, b, left, right, row;
-    unsigned x, y, line, dir;
+    SkS16 a, b, expected_left, expected_right;
+    int x, y, scanline, dx, dy, half, direction;
     game_new(&g);
     g.lamp = 1;
-    for (dir = 0; dir < 8; ++dir) {
-        assert(beam_spans[dir][0][0] > beam_spans[dir][0][1]);
-        g.direction = dir;
-        for (x = 12; x <= 244; x += 116)
-            for (y = 32; y <= 180; ++y)
-                for (line = 24; line < 192; ++line) {
-                    g.x = x;
-                    g.y = y;
-                    left = 255;
-                    right = 0;
-                    row = (((SkS16)line / 4) * 4 + 2 - g.y + 96) / 4;
-                    if (row >= 0 && row < 49) {
-                        a = beam_spans[dir][row][0];
-                        b = beam_spans[dir][row][1];
-                        if (a <= b) {
-                            a += g.x;
-                            b += g.x;
-                            if (b >= 0 && a <= 255) {
-                                left = a < 0 ? 0 : a;
-                                right = b > 255 ? 255 : b;
-                            }
-                        }
-                    }
-                    light_span(&g, line, &a, &b);
-                    assert(a == left && b == right);
+    for (x = 12; x <= 244; x += 116)
+        for (y = 32; y <= 180; ++y)
+            for (scanline = 24; scanline < 192; ++scanline) {
+                g.x = x;
+                g.y = y;
+                dy = (scanline & ~3) + 10 - y;
+                expected_left = 255;
+                expected_right = 0;
+                if (dy >= -64 && dy <= 64) {
+                    half = 0;
+                    while ((half + 1) * (half + 1) + dy * dy <= 64 * 64)
+                        ++half;
+                    expected_left = x - half < 0 ? 0 : x - half;
+                    expected_right = x + half > 255 ? 255 : x + half;
                 }
-    }
+                light_span(&g, scanline, &a, &b);
+                assert(a == expected_left && b == expected_right);
+                for (direction = 0; direction < 8; ++direction) {
+                    g.direction = direction;
+                    for (dx = -65; dx <= 65; dx += 13)
+                        assert(light_sees(&g, x + dx, scanline) ==
+                               (x + dx >= 0 && x + dx <= 255 &&
+                                dx * dx + dy * dy <= 64 * 64));
+                }
+            }
 }
 
 int main(void) {
-    test_beam_equivalence();
+    test_radial_torch();
     test_clock_and_text();
     test_light();
     test_darkness_pause_and_recovery();
@@ -337,6 +338,6 @@ int main(void) {
     test_endings();
     test_scope_destination();
     test_optional_systems();
-    puts("PASS: light, oil, fear, pause, recovery, puzzles, choices, all endings, restart, clocks");
+    puts("PASS: radial torch, fuel, fear, pause, recovery, puzzles, choices, all endings, restart, clocks");
     return 0;
 }

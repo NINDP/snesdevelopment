@@ -29,18 +29,23 @@ def main():
         '|---|---|---|---:|---:|']
     for r in records:
         lines.append('| %s | %s | %s | %s | %s |'%(r['region'],r['controller'],r['requested_ending'],r['frames'],r['audio_peak']))
-    lines+=['','Проверены чёрный мир при выключенном свете, реальный конус окна,',
+    lines+=['','Проверены чёрный мир при выключенном свете, круговой свет факела,',
         'прогресс сцен, порядок знаков, узлы, моральные условия, полные концовки,',
         'журнал, заморозка времени на паузе и ненулевой вывод SPC.',
         'Расширенная секретная ветка проверяет три следа памяти, колокольную',
         'загадку и расход серебра; native tests также проверяют обратные пути.',
-        'JSON-отчёты и кадры приложены в build/.','',
+        'JSON-отчёты и кадры приложены в build/.',
+        'На неподвижном герое проверено движение искр/пламени и сдвиг пикселей',
+        'фона над огнём отдельно от области спрайтов.',
+        'Вступление из пяти экранов проверено кнопками; кадры спортзала,',
+        'подвала и отражения сняты из самой ROM. При включённом фонаре',
+        'проверены тусклые силуэты и яркий круг; без света мир чёрный.','',
         'Физическая SNES, настоящий Super Scope/CRT, macOS и пользовательская',
-        'длительность прохождения не проверены. Это прототип с начальной',
-        'графикой и тремя эффектами, без озвучки, полной музыки и SRAM.']
+        'длительность прохождения не проверены. Это прототип с',
+        'новой графикой и тремя эффектами, без озвучки, полной музыки и SRAM.']
     memory=json.loads((ROOT/'build/memory.json').read_text())
     lines+=['', 'Статика кода игры: %d B (без SDK/стека); Game: 52 B.'%memory['project_static_bytes'],
-        'Текстовый буфер: 1792 B; обе HDMA-таблицы: 266 B.',
+        'Текстовый буфер: 1792 B; четыре HDMA-буфера света и жара: 532 B.',
         'Профили PAL/NTSC приложены в build/profile-*.json.']
     proof=ROOT/'build/reproducibility.json'
     if proof.is_file():
@@ -49,9 +54,9 @@ def main():
             raise ValueError('Reproducibility report belongs to another ROM')
         lines+=['', 'Патч применён к чистой копии исходного шаблона; получена идентичная ROM.']
     (ROOT/'docs/VALIDATION.md').write_text('\n'.join(lines)+'\n')
-    names=['good-pad-ntsc-menu.png','good-pad-ntsc-lamp-on.png',
-        'good-pad-ntsc-forest.png','good-pad-ntsc-revelation.png']
-    labels=['Nabla · главное меню','Фонарь открывает мир','Лес и живые тени','Выбор у Чёрного Сердца']
+    names=['good-pad-ntsc-menu.png','good-pad-ntsc-prologue-2.png',
+        'good-pad-ntsc-prologue-3.png','good-pad-ntsc-lamp-on.png']
+    labels=['Главное меню','Подвал НовГУ','Кирилл в теле Всеволода','Черноречье · исследование']
     font=ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',18)
     sheet=Image.new('RGB',(1088,1000),(0,0,0));draw=ImageDraw.Draw(sheet)
     for i,(name,label) in enumerate(zip(names,labels)):

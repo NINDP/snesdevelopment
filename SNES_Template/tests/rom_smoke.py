@@ -153,11 +153,34 @@ def run(core,ending,pal=False,scope=False):
     else:
         e.tap(5);e.tap(8);e.wait_mode(9)
         r.capture('controls');e.tap(0);e.wait_mode(1);r.action()
-    e.wait_mode(2);r.capture('prologue');r.finish()
-    r.capture('lamp-off');off=np.array(e.frame)[24:192]
+    e.wait_mode(2)
+    # Verify and capture the visual prologue through real controller events.
+    pages=json.loads((ROOT/'assets/story.json').read_text())['dialogues']['D_PROLOG']
+    for page in range(len(pages)):
+        e.run(36)
+        assert e.state()['mode']==2 and e.state()['page']==page,e.state()
+        r.capture('prologue' if page==0 else 'prologue-'+str(page+1))
+        for _ in range(4):
+            r.action()
+            if e.state()['mode']!=2 or e.state()['page']!=page:break
+        else:raise AssertionError('Prologue page did not advance: '+str(e.state()))
+    e.wait_mode(3)
+    # The footer border starts on scanline 191 because BG3 scrolls by -1.
+    r.capture('lamp-off');off=np.array(e.frame)[24:191]
     assert np.max(off)==0,'Lamp OFF must hide the world'
-    r.light();r.capture('lamp-on');on=np.array(e.frame)[24:192]
-    assert 100<np.count_nonzero(on)<on.size//2,'Cone clipping missing'
+    r.light();r.capture('lamp-on');on=np.array(e.frame)[24:191]
+    lit=np.max(on,axis=2)>64
+    assert 100<np.count_nonzero(lit)<lit.size//2,'Radial torch clipping missing'
+    assert np.count_nonzero(np.any(on>0,axis=2))>np.count_nonzero(lit),'Ambient silhouettes missing'
+    r.capture('torch-motion-a');first=np.array(e.frame).copy();position=e.state()
+    e.run(8);r.capture('torch-motion-b');second=np.array(e.frame)
+    assert (e.state()['x'],e.state()['y'])==(position['x'],position['y'])
+    x,y=position['x'],position['y']
+    # Heat must move background pixels away from the ember sprites.
+    heat_a=first[y-48:y-20,x-40:x-16]
+    heat_b=second[y-48:y-20,x-40:x-16]
+    assert np.count_nonzero(heat_a!=heat_b)>8,'Torch heat shimmer is static'
+    assert np.count_nonzero(first[y-54:y+2,x-8:x+24]!=second[y-54:y+2,x-8:x+24])>4,'Flame/embers are static'
     r.inspect(0);r.inspect(1);r.choose(0 if ending!='bad' else 1)
     if ending=='secret':
         r.inspect(4);r.echo(5,1)

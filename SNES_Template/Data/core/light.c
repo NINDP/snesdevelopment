@@ -1,8 +1,7 @@
 #include "../include/game.h"
 /* Gameplay and PPU use the same four-scanline bands. No floats or raycasting. */
 void light_span(const Game *g, SkS16 y, SkS16 *left, SkS16 *right) {
-    SkS16 row, a, b;
-    const SkS16 *span;
+    SkS16 row, width, a, b;
     *left = 255;
     *right = 0;
     /* Separate guards avoid a short-circuit miscompile in 816-tcc. */
@@ -10,21 +9,16 @@ void light_span(const Game *g, SkS16 y, SkS16 *left, SkS16 *right) {
         return;
     if (!g->oil)
         return;
-    /* Visible scanlines are nonnegative. The first span is empty in all
-       directions, so rejecting a negative numerator preserves old clipping. */
-    row = (y & ~3) + 98 - g->y;
+    /* The torch illuminates a circle around the body, independent of facing.
+       A ROM lookup replaces a square root in the 65C816 drawing loop. */
+    row = (y & ~3) + 10 - g->y;
     if (row < 0)
+        row = -row;
+    if (row > TORCH_RADIUS)
         return;
-    row = (SkU16)row >> 2;
-    if (row >= 49)
-        return;
-    span = beam_spans[g->direction & 7][row];
-    a = span[0];
-    b = span[1];
-    if (a > b)
-        return;
-    a += g->x;
-    b += g->x;
+    width = torch_width[row];
+    a = g->x - width;
+    b = g->x + width;
     if (b < 0 || a > 255)
         return;
     if (a < 0)

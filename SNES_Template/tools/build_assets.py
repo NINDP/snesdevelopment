@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Original pixel maps, sprites and precomputed eight-direction beam spans."""
+"""Build SNES backgrounds, actors, radial torch sprites and CP1251 UI tiles."""
 from pathlib import Path
 import struct,os,math,random
 from PIL import Image,ImageDraw,ImageFont
@@ -7,7 +7,7 @@ ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/'assets/generated'
 PALETTE=[(0,0,0),(9,16,27),(20,30,43),(35,46,56),(53,67,64),(76,89,70),
 (107,115,86),(152,153,112),(203,180,114),(249,218,145),(49,107,111),
-(83,165,154),(71,34,50),(133,57,67),(206,92,88),(224,224,198)]
+(83,165,154),(71,34,50),(133,57,67),(248,104,16),(224,224,198)]
 def flat_pixels(im):
     return im.get_flattened_data() if hasattr(im,'get_flattened_data') else im.getdata()
 
@@ -39,6 +39,9 @@ def tree(d,x,y):
     d.polygon([(x,y-16),(x-15,y+10),(x-7,y+8),(x-20,y+20),(x+20,y+20),(x+7,y+8),(x+15,y+10)],fill=4,outline=1)
     d.line((x,y-10,x-7,y+6),fill=6)
     d.line((x+2,y+2,x+9,y+13),fill=5)
+    d.line((x-10,y+9,x-3,y+1),fill=5)
+    d.line((x+4,y+14,x+12,y+19),fill=3)
+    d.line((x-13,y+18,x-6,y+13),fill=6)
 def lamp(d,x,y):
     d.rectangle((x-3,y-5,x+3,y+5),fill=7)
     d.rectangle((x-2,y-3,x+2,y+1),fill=9)
@@ -52,6 +55,9 @@ def house(d,x,y,w,h):
     for xx in (x+8,x+w-19):
         d.rectangle((xx,y+5,xx+11,y+16),fill=8)
         d.line((xx+5,y+5,xx+5,y+16),fill=3)
+        d.line((xx+1,y+15,xx+10,y+15),fill=9)
+    d.rectangle((x+w-14,y-16,x+w-8,y-5),fill=3,outline=1)
+    d.line((x+1,y+h-1,x+w-1,y+h-1),fill=6)
 def map_village():
     im,d=canvas(); floor(d,'earth'); house(d,14,33,70,31); house(d,157,34,78,33)
     d.rectangle((88,27,146,76),fill=1)
@@ -144,7 +150,7 @@ def splash():
         d.line((182-inset,48,182-inset,119,163,119),fill=color)
     return im
 def atlas():
-    im,d=canvas(128,128)
+    im,d=canvas(128,256)
     for i,color in enumerate([10,10,11,5,12,7,3,1]):
         x=i*16
         if i==7:
@@ -164,24 +170,91 @@ def atlas():
         if i==1: d.line((x+8,y+4,x+8,y+11),fill=3); d.line((x+5,y+7,x+11,y+7),fill=3)
         if i==2: d.line((x+4,y+8,x+11,y+8),fill=3)
     d.ellipse((98,36,108,43),fill=1)
+    # Full-height boatbuilder: four facings, two steps, two 16x16 OBJ parts.
+    for facing in range(4):
+        for step in range(2):
+            x=(facing*2+step)*16; y=48
+            d.ellipse((x+3,y+23,x+13,y+27),fill=1)
+            d.rectangle((x+5,y+19,x+7,y+26-step),fill=3)
+            d.rectangle((x+9,y+19,x+11,y+25+step),fill=3)
+            d.line((x+4,y+27-step,x+7,y+27-step),fill=6)
+            d.line((x+9,y+26+step,x+12,y+26+step),fill=6)
+            d.polygon([(x+5,y+8),(x+11,y+8),(x+13,y+19),
+                       (x+3,y+19)],fill=5,outline=1)
+            d.line((x+4,y+14,x+12,y+14),fill=7)
+            d.rectangle((x+5,y+3,x+10,y+8),fill=8)
+            d.rectangle((x+4,y+1,x+11,y+4),fill=3)
+            if facing!=0:
+                d.point((x+(9 if facing==1 else 6),y+5),fill=1)
+                d.line((x+6,y+8,x+10,y+8),fill=3)
+            else:
+                d.rectangle((x+5,y+4,x+10,y+7),fill=3)
+            d.line((x+3,y+10,x+2,y+17),fill=7)
+            d.line((x+12,y+10,x+13,y+17),fill=8)
+            d.line((x+13,y+10,x+14,y+20),fill=6)
+    # Import Kirill and the animated coin from the first game, keeping its alpha.
+    fixed=Image.new('P',(1,1)); fixed.putpalette(im.getpalette())
+    source=ROOT/'assets/cinematics'
+    for n,name in enumerate(('SceneTwoPlayerIdle.png','SceneTwoMainCharacterRunRight1.png')):
+        actor=Image.open(source/name).convert('RGBA').resize((16,32),Image.Resampling.NEAREST)
+        indexed=actor.convert('RGB').quantize(palette=fixed,dither=Image.Dither.NONE)
+        im.paste(indexed,(n*16,96),actor.getchannel('A'))
+    for n in range(4):
+        coin=Image.open(source/('HudCoinSpin%d.png'%(n+1))).convert('RGBA')
+        coin=coin.resize((16,16),Image.Resampling.NEAREST)
+        im.paste(coin.convert('RGB').quantize(palette=fixed,dither=Image.Dither.NONE),
+                 (n*16,32),coin.getchannel('A'))
+    # Four hand-authored flame frames and three tiny ember sprites.
+    for frame in range(4):
+        x=frame*16; y=80
+        lean=(0,1,-1,1)[frame]
+        d.line((x+7,y+8,x+9,y+15),fill=6,width=2)
+        d.line((x+7,y+9,x+10,y+9),fill=7)
+        d.polygon([(x+7+lean,y),(x+5,y+5),(x+3,y+8),(x+5,y+11),
+                   (x+10,y+11),(x+12,y+7),(x+9,y+3)],fill=14)
+        d.polygon([(x+7+lean,y+3),(x+5,y+8),(x+7,y+11),
+                   (x+10,y+9)],fill=9)
+        d.line((x+7,y+7,x+8,y+10),fill=15)
+    for frame,color in enumerate((15,9,14)):
+        x=64+frame*16
+        d.point((x+7,84),fill=color)
+        if frame<2:d.point((x+8,85),fill=9)
+        if frame==0:d.point((x+7,85),fill=15)
+    d.line((119,86,121,95),fill=6,width=2)
+    d.line((118,87,122,87),fill=7)
+    # A tall dissolving silhouette for the gym shot.
+    d.ellipse((36,97,43,104),fill=2)
+    d.polygon([(36,105),(43,105),(47,124),(33,124)],fill=1,outline=2)
+    # Villagers and a full-height enemy occupy the second half of OBJ VRAM.
+    for n,coat in enumerate((6,12,10,3,4,1)):
+        x=n*16; y=128
+        if n==5:
+            d.ellipse((x+4,y+1,x+11,y+8),fill=2)
+            d.polygon([(x+4,y+9),(x+11,y+9),(x+15,y+28),
+                       (x+8,y+25),(x+1,y+28)],fill=1,outline=2)
+            d.point((x+6,y+5),fill=11);d.point((x+10,y+5),fill=11)
+            continue
+        d.ellipse((x+3,y+25,x+13,y+28),fill=1)
+        d.rectangle((x+5,y+21,x+7,y+26),fill=3)
+        d.rectangle((x+10,y+21,x+12,y+26),fill=3)
+        d.polygon([(x+4,y+10),(x+11,y+10),(x+14,y+23),
+                   (x+2,y+23)],fill=coat,outline=1)
+        d.line((x+6,y+11,x+6,y+20),fill=5 if n!=2 else 11)
+        d.rectangle((x+5,y+4,x+11,y+10),fill=8 if n!=2 else 15)
+        d.rectangle((x+4,y+2,x+11,y+4),fill=7 if n==0 else (15 if n==2 else 3))
+        d.point((x+6,y+6),fill=1);d.point((x+10,y+6),fill=1)
+        if n in (0,4):d.line((x+6,y+10,x+10,y+11),fill=3)
+        if n==3:
+            d.line((x+9,y+13,x+9,y+18),fill=8)
+            d.line((x+7,y+15,x+11,y+15),fill=8)
     return im
-def beam_table():
+def torch_table():
     (ROOT/'Data/content').mkdir(parents=True,exist_ok=True)
-    rows=[]
-    for direction in range(8):
-        im=Image.new('1',(241,241)); d=ImageDraw.Draw(im)
-        angle=direction*math.pi/4
-        vx,vy=math.sin(angle),-math.cos(angle); px,py=-vy,vx
-        d.polygon([(120,120),(round(120+vx*92+px*34),round(120+vy*92+py*34)),(round(120+vx*92-px*34),round(120+vy*92-py*34))],fill=1)
-        d.ellipse((110,110,130,130),fill=1)
-        spans=[]
-        for yy in range(-96,97,4):
-            xs=[x-120 for y in range(120+yy,min(120+yy+4,241)) for x in range(241) if 0<=y<241 and im.getpixel((x,y))]
-            spans.append((min(xs),max(xs)) if xs else (255,0))
-        rows.append(spans)
-    text=['/* Generated 8 directions x 49 four-line bands. */','#include "../include/game.h"','const SkS16 beam_spans[8][49][2] = {']
-    for spans in rows: text.append('    {'+','.join('{%d,%d}'%s for s in spans)+'},')
-    text.append('};')
+    widths=[math.isqrt(64*64-y*y) for y in range(65)]
+    text=['/* Generated radial torch: 64 pixel radius. */',
+          '#include "../include/game.h"',
+          'const SkU8 torch_width[TORCH_RADIUS + 1] = {'+
+          ','.join(str(x) for x in widths)+'};']
     (ROOT/'Data/content/beam.c').write_text('\n'.join(text)+'\n')
 
 def planar(tile,bpp):
@@ -192,34 +265,77 @@ def planar(tile,bpp):
                 result.append(sum(((tile[y*8+x]>>plane)&1)<<(7-x) for x in range(8)))
     return bytes(result)
 
-def tile_image(im,dedupe=True,bpp=4):
+def tile_image(im,dedupe=True,bpp=4,max_tiles=512,palette_tiles=False):
     pixels=list(flat_pixels(im)); w,h=im.size
     tiles=[]; index={}; tilemap=[0]*1024
     for ty in range(h//8):
         for tx in range(w//8):
             tile=tuple(pixels[(ty*8+y)*w+tx*8+x] for y in range(8) for x in range(8))
+            palette=0
+            if palette_tiles:
+                banks={pixel>>4 for pixel in tile if pixel}
+                if len(banks)>1: raise ValueError('An 8x8 tile mixes palette banks')
+                palette=next(iter(banks),0)
+                tile=tuple(pixel&15 for pixel in tile)
             if not dedupe or tile not in index:
                 index[tile]=len(tiles); tiles.append(tile)
-            tilemap[ty*32+tx]=index[tile]
-    if dedupe and len(tiles)>512: raise ValueError('BG exceeds reserved 512 tiles')
+            tilemap[ty*32+tx]=index[tile]|(palette<<10)
+    if dedupe and len(tiles)>max_tiles: raise ValueError('BG exceeds tile budget: '+str(len(tiles)))
     return b''.join(planar(t,bpp) for t in tiles),struct.pack('<1024H',*tilemap)
 
 def main():
+    from build_cinematics import scenes, world_scenes
     OUT.mkdir(parents=True,exist_ok=True)
     assembly=['; Generated by tools/build_assets.py.','.include "hdr.asm"','']
-    backgrounds=[splash(),title(),map_village(),map_forest(),map_chapel(),map_dungeon()]
+    backgrounds=[splash(),title(),*world_scenes()]
     for i,im in enumerate(backgrounds):
-        name='bg%d'%i; tiles,tilemap=tile_image(im)
+        name='bg%d'%i; tiles,tilemap=tile_image(im,max_tiles=768,palette_tiles=i>=2)
         (OUT/(name+'.chr')).write_bytes(tiles); (OUT/(name+'.map')).write_bytes(tilemap)
         im.convert('RGB').save(OUT/(name+'.png'))
         assembly += ['.section "%s" superfree'%name, name+'_tiles:',
                      '.incbin "assets/generated/%s.chr"'%name,name+'_tiles_end:',
-                     name+'_map:', '.incbin "assets/generated/%s.map"'%name,'.ends','']
+                     name+'_map:', '.incbin "assets/generated/%s.map"'%name]
+        if i>=2:
+            pal=im.getpalette()[:384]
+            colors=struct.pack('<128H',*(pal[n]//8+(pal[n+1]//8)*32+(pal[n+2]//8)*1024
+                                        for n in range(0,384,3)))
+            (OUT/(name+'.pal')).write_bytes(colors)
+            assembly += [name+'_palette:','.incbin "assets/generated/%s.pal"'%name]
+        assembly += ['.ends','']
+        print(name,len(tiles)//32,'tiles')
+        if i>=2:
+            dim_banks={0:2,3:5,4:6}
+            dimmap=struct.pack('<1024H',*((x&1023)|(dim_banks[(x>>10)&7]<<10)
+                                          for x in struct.unpack('<1024H',tilemap)))
+            (OUT/(name+'.dimmap')).write_bytes(dimmap)
+            assembly+=['.section "%s_dim" superfree'%name,name+'_dim:',
+                       '.incbin "assets/generated/%s.dimmap"'%name,'.ends','']
+    for i,im in enumerate(scenes()):
+        name='cine%d'%i; tiles,tilemap=tile_image(im,max_tiles=768,palette_tiles=True)
+        pal=im.getpalette()[:384]
+        palette=struct.pack('<128H',*(pal[n]//8+(pal[n+1]//8)*32+(pal[n+2]//8)*1024
+                                     for n in range(0,384,3)))
+        for extension,payload in (('chr',tiles),('map',tilemap),('pal',palette)):
+            (OUT/(name+'.'+extension)).write_bytes(payload)
+        im.convert('RGB').save(OUT/(name+'.png'))
+        assembly+=['.section "%s" superfree'%name,name+'_tiles:',
+                   '.incbin "assets/generated/%s.chr"'%name,name+'_tiles_end:',
+                   name+'_map:','.incbin "assets/generated/%s.map"'%name,
+                   name+'_palette:','.incbin "assets/generated/%s.pal"'%name,'.ends','']
         print(name,len(tiles)//32,'tiles')
     palette=struct.pack('<16H',*[r//8+(g//8)*32+(b//8)*1024 for r,g,b in PALETTE])
     (OUT/'palette.pal').write_bytes(palette)
+    ambient=struct.pack('<16H',*[max(0,r//32)+(max(0,g//32))*32+(max(0,b//24))*1024
+                                 for r,g,b in PALETTE])
+    (OUT/'ambient.pal').write_bytes(ambient)
     sheet=atlas(); tiles,_=tile_image(sheet,False)
     (OUT/'sprites.chr').write_bytes(tiles); sheet.convert('RGB').save(OUT/'sprites.png')
+    torch=sheet.crop((0,80,128,96))
+    rgba=torch.convert('RGBA')
+    mask=Image.new('L',torch.size)
+    mask.putdata([255 if pixel else 0 for pixel in flat_pixels(torch)])
+    rgba.putalpha(mask)
+    rgba.save(OUT/'torch-sheet.png')
     # CP1251 font. Tiles are 2bpp; color 1 = ink, 2 = panel background.
     candidates=[os.environ.get('SK_FONT',''),
                 '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf',
@@ -243,6 +359,16 @@ def main():
     cd.rectangle((4,4,12,12),outline=1)
     for ty,tx in ((0,0),(0,1),(1,0),(1,1)):
         fonttiles.append(planar(list(flat_pixels(cross.crop((tx*8,ty*8,tx*8+8,ty*8+8)))),2))
+    # Tiles 261..268: gold panel borders; 269/270: filled/empty HUD segments.
+    for kind in range(10):
+        tile=Image.new('L',(8,8),2); td=ImageDraw.Draw(tile)
+        if kind in (0,4,5): td.line((0,1,7,1),fill=3)
+        if kind in (1,6,7): td.line((0,6,7,6),fill=3)
+        if kind in (2,4,6): td.line((1,0,1,7),fill=3)
+        if kind in (3,5,7): td.line((6,0,6,7),fill=3)
+        if kind>=8:
+            td.rectangle((1,2,6,5),outline=3,fill=3 if kind==8 else 2)
+        fonttiles.append(planar(list(flat_pixels(tile)),2))
     (OUT/'font.chr').write_bytes(b''.join(fonttiles))
     assembly += ['.section "sprites" superfree','sprite_tiles:',
                  '.incbin "assets/generated/sprites.chr"','sprite_tiles_end:',
@@ -250,8 +376,10 @@ def main():
                  '.section "font" superfree','font_tiles:',
                  '.incbin "assets/generated/font.chr"','font_tiles_end:',
                  'bg_palette:','.incbin "assets/generated/palette.pal"','.ends','']
+    assembly+=['.section "ambient_palette" superfree','ambient_palette:',
+               '.incbin "assets/generated/ambient.pal"','.ends','']
     (ROOT/'Data/content/assets.asm').write_text('\n'.join(assembly))
 
 if __name__=='__main__':
-    beam_table()
+    torch_table()
     main()

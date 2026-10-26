@@ -112,3 +112,11 @@ The SPC runtime comes from unmodified PVSnesLib 4.6.0. Original SNESMOD by mukun
 ;
 ;----------------------------------------------------------------------
 ```
+
+## Novgu-Biohazard artwork
+
+The gym, Kirill sprites and animated coin frames in assets/cinematics come
+from the local Novgu-Biohazard project. Its MIT license is preserved verbatim
+in assets/cinematics/Novgu-Biohazard.LICENSE. New cinematic and location
+artwork was generated with the built-in image_gen tool; the prompts and
+reference roles are recorded in assets/cinematics/README.md.

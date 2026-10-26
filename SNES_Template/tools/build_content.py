@@ -53,5 +53,18 @@ def main():
         header.append('#define TXT_'+key+' '+literal(value))
     header.append('#endif')
     (ROOT/'Data/include/ui_text.h').write_text('\n'.join(header)+'\n')
-    print('Content validated:',len(expected),'scenes,',sum(len(data['dialogues'][x]) for x in expected),'pages')
+    page_count=sum(len(data['dialogues'][x]) for x in expected)
+    script=['# Сокращённый сценарий SNES-сборки','',
+            '%d групп сцен, %d экрана. Исходник — assets/story.json.'%(len(expected),page_count),'',
+            'Кирилл после победы над Тенью спускается в подвал НовГУ',
+            'и оказывается в Черноречье, в теле Всеволода.','']
+    for key in expected:
+        script+=['## '+key,'']
+        for number,page in enumerate(data['dialogues'][key],1):
+            script+=['**%s · %d**'%(page['speaker'],number),'',page['text'],'']
+    script+=['## Решения','']
+    for number,pair in enumerate(data['choices'],1):
+        script+=['%d. %s / %s'%(number,pair[0],pair[1]),'']
+    (ROOT/'docs/SCENES.md').write_text('\n'.join(script).rstrip()+'\n')
+    print('Content validated:',len(expected),'scenes,',page_count,'pages')
 if __name__=='__main__': main()

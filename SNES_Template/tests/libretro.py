@@ -123,7 +123,9 @@ class Emulator:
         for _ in range(n): self.lib.retro_run(); self.frames+=1
 
     def tap(self,key):
-        self.buttons={key}; self.run(4); self.buttons=set(); self.run(4)
+        # Allow a complete main-loop/input-queue pass on both edges, including
+        # frames spent uploading a background or rebuilding torch HDMA tables.
+        self.buttons={key}; self.run(8); self.buttons=set(); self.run(8)
 
     def gun_tap(self,key,x=None,y=None):
         if x is not None: self.x=x
