@@ -1,58 +1,28 @@
-SRC := Data
-
-# BEFORE including snes_rules :
-# list in AUDIOFILES all your .it files in the right order. It will build to generate soundbank file
-AUDIOFILES := Audio/BGM/pollen8.it
-# then define the path to generate soundbank data. The name can be different but do not forget to update your include in .c file !
-export SOUNDBANK := Data/soundbank
-
-include ${PVSNESLIB_HOME}/devkitsnes/snes_rules
-
-.PHONY: bitmaps all
-
-#---------------------------------------------------------------------------------
-# ROMNAME is used in snes_rules file
-export ROMNAME := SnesGamejam
-
-#Converting all the images to the files used by the SNES
-Image_png = $(wildcard Graphics/Images/*.png)
-Image_pal = $(addprefix Graphics/Palettes/,$(notdir $(Image_png:%.png=%.pal)))
-Image_map = $(addprefix Graphics/Maps/,$(notdir $(Image_png:%.png=%.map)))
-Image_chr = $(addprefix Graphics/Tiles/,$(notdir $(Image_png:%.png=%.chr)))
-
-#path to the superfamiconv
-IMGCONV=$(HOME)/SNESDevelopment/ImageConversion/superfamiconv
-
-#path to the emulator
-EMULATOR=$(HOME)/SNESDevelopment/MesenEmulator/Mesen
-
-# to build musics, define SMCONVFLAGS with parameters you want
-SMCONVFLAGS	:= -s -o $(SOUNDBANK) -V -b 5
-musics: $(SOUNDBANK).obj
-
-all: $(Image_pal) $(Image_map) $(Image_chr) musics bitmaps $(ROMNAME).sfc
-
-
-Graphics/Palettes/%.pal: Graphics/Images/%.png
-	$(IMGCONV) -i $^ -p $@
-
-Graphics/Maps/%.map: Graphics/Images/%.png
-	$(IMGCONV) -i $^ -m $@
-
-Graphics/Tiles/%.chr: Graphics/Images/%.png
-	$(IMGCONV) -i $^ -t $@
-
-
-clean: cleanBuildRes cleanRom cleanGfx cleanAudio
-	rm -f *.o *.sfc
-	rm -f $(Image_pal) $(Image_map) $(Image_chr)
-	
-run:
-	$(EMULATOR) $(ROMNAME).sfc
-	
-	
-	
-#---------------------------------------------------------------------------------
-
-bitmaps : Graphics/Tiles/pvsneslib.chr Graphics/Tiles/Title.chr Graphics/Tiles/RUSSNES.chr
-#Background.pic Ship.pic
+ifeq ($(strip $(PVSNESLIB_HOME)),)
+$(error Set PVSNESLIB_HOME to PVSnesLib 4.6.0, or run sh tools/get_sdk.sh)
+endif
+export ROMNAME := chernorechye
+export ROMTITLE := NABLA CHERNORECHYE
+export ROMBANKS := 16
+export ROMSIZE := 09
+export COUNTRY := 01
+export SRC := Data
+# Explicit manifest: legacy demo states/music and compiler .asm are not linked.
+override CFILES := main.c Data/gameState.c $(wildcard Data/core/*.c) $(wildcard Data/platform/*.c) $(wildcard Data/content/*.c)
+override SFILES := Data/content/assets.asm Data/content/audio.asm
+include $(PVSNESLIB_HOME)/devkitsnes/snes_rules
+export OFILES := $(sort $(CFILES:.c=.obj) $(SFILES:.asm=.obj))
+$(ROMNAME).sfc: $(OFILES) Makefile tools/link_rom.py
+	python3 tools/link_rom.py --linker "$(LD)" --library-dir "$(LIBDIRSOBJS)" --output "$@" $(OFILES)
+# Headers must invalidate C -> .ps, not just the assembler/object stage.
+$(CFILES:.c=.ps): $(wildcard Data/include/*.h)
+.SECONDARY:
+.PHONY: all assets clean buildActual
+buildActual: $(ROMNAME).sfc
+all: assets
+	$(MAKE) buildActual
+assets:
+	python3 tools/build_content.py
+	python3 tools/build_assets.py
+	python3 tools/build_audio.py
+clean: cleanBuildRes cleanRom cleanLogs

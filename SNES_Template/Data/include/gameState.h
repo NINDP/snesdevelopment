@@ -6,5 +6,4 @@ void GameUpdate(void);
 void GameDraw(void);
 void GameEnd(void);
 
-
 #endif

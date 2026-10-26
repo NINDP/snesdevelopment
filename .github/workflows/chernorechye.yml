@@ -1,0 +1,79 @@
+name: Chernorechye SNES
+on:
+  push:
+    branches: [main, port/chernorechye-snes]
+    paths: [SNES_Template/**, .github/workflows/chernorechye.yml]
+  pull_request:
+    paths: [SNES_Template/**, .github/workflows/chernorechye.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: chernorechye-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build-and-play:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y fonts-dejavu-core zlib1g-dev
+          python3 -m pip install -r SNES_Template/requirements.txt
+      - name: Generate and test the portable core
+        working-directory: SNES_Template
+        run: |
+          python3 tools/build_content.py
+          python3 tools/build_assets.py
+          python3 tools/build_audio.py
+          make -f Makefile.host test
+          make -f Makefile.host sanitize
+          python3 -m unittest discover -s tests -p 'test_build.py'
+          python3 -m py_compile tools/*.py tests/*.py
+          sh -n tools/get_sdk.sh
+      - name: Build verified SNES ROM
+        working-directory: SNES_Template
+        run: |
+          sh tools/get_sdk.sh
+          export PVSNESLIB_HOME="$PWD/third_party/pvsneslib"
+          make
+          python3 tools/memory_report.py
+          sha256sum chernorechye.sfc > build/first-build.sha256
+          make
+          sha256sum --check build/first-build.sha256
+      - name: Build pinned Snes9x libretro
+        run: |
+          git clone --depth 1 https://github.com/libretro/snes9x.git "$RUNNER_TEMP/snes9x"
+          git -C "$RUNNER_TEMP/snes9x" fetch --depth 1 origin fae2fea08f74180759ef540ee94259213f503480
+          git -C "$RUNNER_TEMP/snes9x" checkout fae2fea08f74180759ef540ee94259213f503480
+          git -C "$RUNNER_TEMP/snes9x" submodule update --init --recursive
+          make -C "$RUNNER_TEMP/snes9x/libretro" -j2
+      - name: Play all endings and expanded paths
+        working-directory: SNES_Template
+        run: |
+          core="$RUNNER_TEMP/snes9x/libretro/snes9x_libretro.so"
+          python3 tests/rom_smoke.py --core "$core" --ending good
+          python3 tests/rom_smoke.py --core "$core" --ending bad
+          python3 tests/rom_smoke.py --core "$core" --ending secret
+          python3 tests/rom_smoke.py --core "$core" --pal
+          python3 tests/rom_smoke.py --core "$core" --scope
+          python3 tests/rom_smoke.py --core "$core" --scope --pal
+          python3 tests/rom_smoke.py --core "$core" --ending secret --scope
+          python3 tests/rom_smoke.py --core "$core" --ending secret --pal
+          python3 tests/rom_profile.py --core "$core"
+          python3 tests/rom_profile.py --core "$core" --pal
+      - name: Package source, ROM and reports
+        working-directory: SNES_Template
+        run: python3 tools/package.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chernorechye-snes
+          path: |
+            SNES_Template/dist/
+            SNES_Template/docs/
+            SNES_Template/build/*.json
+            SNES_Template/build/*.png
+          retention-days: 90
