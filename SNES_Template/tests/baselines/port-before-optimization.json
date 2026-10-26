@@ -1,0 +1,24 @@
+{
+  "label": "baseline",
+  "region": "NTSC",
+  "cadence": [
+    {
+      "scenario": "dark-static",
+      "video_frames": 600,
+      "updates": 296,
+      "max_vblank_gap": 4
+    },
+    {
+      "scenario": "lit-static",
+      "video_frames": 600,
+      "updates": 198,
+      "max_vblank_gap": 5
+    },
+    {
+      "scenario": "lit-sweep",
+      "video_frames": 600,
+      "updates": 178,
+      "max_vblank_gap": 6
+    }
+  ]
+}
