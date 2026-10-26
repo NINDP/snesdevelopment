@@ -28,7 +28,7 @@ static void enter_room(Game *g, SkU8 room) {
     g->destination_y = g->y;
     g->enemy_x = 220;
     g->enemy_y = 120;
-    g->enemy_active = room == 1 || room == 3;
+    g->enemy_active = room == 3 || (room == 1 && game_daylight(g) < 8);
     g->direction = 0;
     g->mode = G_EXPLORE;
     g->notice = 0;
@@ -36,11 +36,13 @@ static void enter_room(Game *g, SkU8 room) {
 }
 void game_init(Game *g) {
     memset(g, 0, sizeof(*g));
+    daycycle_init(g);
     g->mode = G_SPLASH;
     g->oil = 120;
 }
 void game_new(Game *g) {
     memset(g, 0, sizeof(*g));
+    daycycle_init(g);
     g->oil = 120;
     enter_room(g, 0);
     begin_dialogue(g, D_PROLOG);
@@ -210,7 +212,7 @@ SkU8 game_nearby(const Game *g) {
         d = distance(g->x, h->x) + distance(g->y, h->y);
         if (d >= minimum)
             continue;
-        if (!light_sees(g, h->x, h->y))
+        if (!game_visible(g, h->x, h->y))
             continue;
         best = i;
         minimum = d;
@@ -260,9 +262,7 @@ static void silver_ward(Game *g) {
 }
 static void interact(Game *g, SkU8 id) {
     if (id == SK_NONE) {
-        if (!g->lamp)
-            begin_dialogue(g, D_NO_LIGHT);
-        else if (!g->oil)
+        if (!game_daylight(g) && (!g->lamp || !g->oil))
             begin_dialogue(g, D_NO_LIGHT);
         return;
     }
@@ -468,6 +468,9 @@ static void corridor_tick(Game *g, const SkInput *in) {
 static void tick_environment(Game *g) {
     SkU8 i;
     const Hotspot *h;
+    if (g->time_notice)
+        --g->time_notice;
+    g->enemy_active = g->room == 3 || (g->room == 1 && game_daylight(g) < 8);
     i = echo_index(g->room);
     if (i != SK_NONE) {
         h = game_hotspot(g->room, i);
@@ -509,9 +512,13 @@ static void tick_environment(Game *g) {
     if (++g->pulse >= 60) {
         g->pulse = 0;
         ++g->seconds;
+        daycycle_second(g);
         if (g->lamp && g->oil) {
             if (g->seconds % 3 == 0)
                 --g->oil;
+            if (g->fear)
+                --g->fear;
+        } else if (game_daylight(g) >= 8) {
             if (g->fear)
                 --g->fear;
         } else if (g->fear < 98)
@@ -521,7 +528,8 @@ static void tick_environment(Game *g) {
         game_checkpoint(g);
 }
 void game_tick(Game *g, const SkInput *in) {
-    SkU8 advance = (in->pressed & SK_ACTION) || (in->scope && in->fire && !in->offscreen);
+    SkU8 advance = (in->pressed & SK_ACTION) ||
+                   (in->scope && in->fire && in->aim_valid && !in->offscreen);
     SkU16 length;
     const StoryLine *line;
     const Hotspot *point;

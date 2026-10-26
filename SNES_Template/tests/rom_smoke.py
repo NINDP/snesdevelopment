@@ -9,11 +9,71 @@ HOTSPOTS[0].append((94,104))
 HOTSPOTS[1].extend([(168,116),(12,40)])
 HOTSPOTS[2].extend([(172,144),(224,48)])
 HOTSPOTS[3].append((84,96))
+# Independent screen-space contract, deliberately not read from generated HDMA.
+# The largest flicker radius is 79; two pixels cover scanline/latch rounding.
+_TORCH_Y,_TORCH_X=np.ogrid[:224,:256]
+TORCH_CENTERS=((119,125),(140,126),(136,127),(116,126))
+def torch_center(state):
+    return TORCH_CENTERS[(state['direction']>>1)&3]
+def daylight(state):
+    second=state['day_seconds']
+    sun=0 if second<160 or second>=640 else ((second-160)//4 if second<224 else
+        (16 if second<576 else 16-(second-576)//4))
+    assert state['sun_level']==sun,('Stale daylight',state)
+    return sun if state['room']<2 else 0
 class Runner:
     def __init__(self,e,scope):
         self.e=e;self.scope=scope;self.shots=[];self.prefix=''
     def capture(self,name):
-        self.shots.append(self.e.capture(self.prefix+name+'.png',allow_dark=name=='lamp-off'))
+        state=self.e.state()
+        self.shots.append(self.e.capture(self.prefix+name+'.png',
+            allow_dark=state['mode']==3 and not (state['lamp'] and state['oil']) and not daylight(state)))
+        self.check_darkness(name,self.e.state())
+    def check_darkness(self,name,state):
+        mode=state['mode']
+        if mode==3:cut=200 if state['time_notice'] else 224
+        elif mode in (2,4,5,6,7,11):
+            if mode==2 and state['dialogue']==0:return
+            if mode==7 and (state['return_mode']==12 or
+                    (state['return_mode']==2 and state['dialogue']==0)):return
+            cut={2:128,4:88,5:64,6:16,7:48,11:64}[mode]
+        else:return
+        pixels=np.asarray(self.e.frame)
+        assert pixels.shape==(224,256,3),(name,pixels.shape)
+        # The mode-switch scanline may already contain the first UI pixels.
+        end=cut if cut==224 else cut-1
+        world=pixels[:end]
+        if daylight(state):
+            if daylight(state)==16 and end>80:
+                assert np.count_nonzero(np.any(world!=0,axis=2))>500,('Missing sunlight',name,state)
+            return
+        if not (state['lamp'] and state['oil']):
+            assert not np.any(world),(name,'Unlit world revealed behind UI',state)
+            return
+        cx,cy=torch_center(state)
+        outside=(_TORCH_X-cx)**2+(_TORCH_Y-cy)**2>81**2
+        escaped=np.any(world!=0,axis=2)&outside[:end]
+        assert not np.any(escaped),(name,'Light escaped the torch circle',
+            np.argwhere(escaped)[:8].tolist(),state)
+        if mode==3:
+            assert np.count_nonzero(np.any(world!=0,axis=2))>150,(
+                name,'Lit world is missing',state)
+    def lighting_roundtrip(self,name):
+        """Exercise light/UI transitions at each room entry without moving."""
+        before=self.e.state()
+        assert before['mode']==3 and before['lamp'] and before['oil'],before
+        self.capture(name)
+        self.e.gun_tap(3,128,112) if self.scope else self.e.tap(9)
+        assert not self.e.state()['lamp'],self.e.state()
+        self.capture(name+'-lamp-off')
+        self.e.tap(1);self.e.wait_mode(6)
+        self.capture(name+'-dark-journal')
+        self.e.tap(1);self.e.wait_mode(3)
+        self.capture(name+'-dark-resume')
+        self.light();self.capture(name+'-light-resume')
+        after=self.e.state()
+        for field in ('mode','room','x','y','interactions'):
+            assert after[field]==before[field],(name,field,before,after)
     def screen_point(self,x,y):
         state=self.e.state()
         if state['mode']!=3:return x,y
@@ -223,11 +283,12 @@ def run(core,ending,pal=False,scope=False):
             assert e.state()['mode']==2 and e.state()['page']==1,e.state()
     e.wait_mode(3)
     r.capture('lamp-off');off=np.array(e.frame)
-    assert np.max(off)==0,'Lamp OFF must hide the world'
+    assert (np.max(off)>0 if daylight(e.state()) else np.max(off)==0),'Incorrect unlit visibility'
     r.light();r.capture('lamp-on');on=np.array(e.frame)
     assert np.count_nonzero(np.max(on[80:220],axis=2)>32)>300,'Mode 7 ground missing'
     assert np.count_nonzero(np.any(on[0:24]>64,axis=2))==0,'Permanent header returned'
     assert np.count_nonzero(np.any(on[208:224]>64,axis=2))<1500,'Permanent footer returned'
+    r.lighting_roundtrip('village')
     e.tap(1);e.wait_mode(6);r.capture('status')
     saved=e.state();e.run(60)
     assert e.state()['oil']==saved['oil'] and e.state()['fear']==saved['fear'],'Status must freeze simulation'
@@ -235,11 +296,12 @@ def run(core,ending,pal=False,scope=False):
     r.capture('torch-motion-a');first=np.array(e.frame).copy();position=e.state()
     e.run(8);r.capture('torch-motion-b');second=np.array(e.frame)
     assert (e.state()['x'],e.state()['y'])==(position['x'],position['y'])
-    assert np.count_nonzero(first[104:151,128:148]!=second[104:151,128:148])>4,'Flame/embers are static'
+    fx,fy=torch_center(position)
+    assert np.count_nonzero(first[fy-36:fy+16,fx-16:fx+16]!=second[fy-36:fy+16,fx-16:fx+16])>8,'Flame/embers are static'
     r.inspect(0);r.inspect(1);r.choose(0 if ending!='bad' else 1)
     if ending=='secret':
         r.inspect(4);r.echo(5,1)
-    r.inspect(3);assert e.state()['room']==1,e.state();r.capture('forest')
+    r.inspect(3);assert e.state()['room']==1,e.state();r.lighting_roundtrip('forest')
     r.inspect(0);r.inspect(1);r.choose(0 if ending!='bad' else 1)
     if ending=='secret':
         r.inspect(7);r.echo(8,2)
@@ -247,14 +309,14 @@ def run(core,ending,pal=False,scope=False):
         r.inspect(4);assert e.state()['forest_step']==0
     for index in (2,3,4):r.inspect(index)
     assert e.state()['flags']&64,e.state()
-    r.inspect(5);assert e.state()['room']==2;r.capture('chapel')
+    r.inspect(5);assert e.state()['room']==2;r.lighting_roundtrip('chapel')
     r.inspect(0);r.inspect(1)
     if ending=='secret':r.inspect(5)
     r.inspect(6)
     if ending=='secret':r.bells()
     r.inspect(3);r.cups();assert e.state()['flags']&1024
     r.inspect(4);assert e.state()['mode']==4
-    r.capture('revelation');r.choose(0 if ending!='bad' else 1);r.capture('dungeon')
+    r.capture('revelation');r.choose(0 if ending!='bad' else 1);r.lighting_roundtrip('dungeon')
     if ending=='secret':
         r.echo(8,4);assert e.state()['memories']==15
         e.tap(0);e.wait_state(lambda s:s['wards']==2,'Silver ward')

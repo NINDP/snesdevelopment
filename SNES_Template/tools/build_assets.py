@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Build SNES backgrounds, actors, radial torch sprites and CP1251 UI tiles."""
 from pathlib import Path
-import struct,os,math,random
-from PIL import Image,ImageDraw,ImageFont
+import struct,math,random
+from PIL import Image,ImageDraw
 ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/'assets/generated'
 PALETTE=[(0,0,0),(9,16,27),(20,30,43),(35,46,56),(53,67,64),(76,89,70),
@@ -262,27 +262,113 @@ def atlas():
             d.line((x+7,y+15,x+11,y+15),fill=8)
     # Upright Mode 7 scenery uses the previously empty atlas strip at y=160.
     d.rectangle((0,160,127,191),fill=0)
-    d.rectangle((13,181,18,191),fill=3)
-    d.polygon([(16,160),(4,174),(9,173),(0,184),(9,182),(3,189),
-               (28,189),(22,182),(31,184),(22,173),(27,174)],fill=4,outline=1)
-    d.line((15,164,9,176,15,174,6,185),fill=6,width=2)
-    d.line((19,174,24,181,17,179),fill=5)
-    # 16-pixel distant pine, rune stone, parchment, house, oil jar.
-    tree(d,40,170)
-    d.rectangle((48,171,61,189),fill=3,outline=1)
-    d.line((52,180,55,174,58,183,51,183),fill=8)
-    d.rectangle((48,162,61,168),fill=7)
-    d.line((51,164,58,164),fill=3)
-    d.rectangle((64,173,95,191),fill=4,outline=1)
-    d.polygon([(64,174),(80,160),(95,174)],fill=6,outline=1)
-    for yy in range(178,191,4):d.line((65,yy,94,yy),fill=3)
-    d.rectangle((77,179,84,191),fill=1)
-    d.rectangle((67,178,72,183),fill=8)
-    d.rectangle((99,179,107,190),fill=6,outline=1)
-    d.rectangle((101,174,105,180),fill=7)
-    d.line((100,182,105,182),fill=8)
+    # Each object is authored in its own cell: branches cannot overwrite a
+    # neighbouring tile, an NPC above, or Kirill's animation below this strip.
+    pine,pd=canvas(32,32)
+    pd.ellipse((3,27,28,31),fill=1)
+    pd.polygon([(13,18),(18,18),(19,29),(17,31),(12,30)],fill=3)
+    pd.line((14,22,14,29),fill=6)
+    pd.line((17,23,17,29),fill=2)
+    for points in (
+        [(16,0),(11,8),(13,7),(7,14),(10,13),(4,20),(8,19),
+         (0,27),(7,26),(4,29),(13,28),(18,28),(27,29),(24,26),
+         (31,27),(24,19),(27,20),(21,13),(24,14),(19,7),(21,8)],
+    ):
+        pd.polygon(points,fill=4,outline=1)
+    # Broad dark undersides and broken lighter clusters give the canopy depth.
+    pd.line((10,13,14,12,17,13,21,12),fill=2)
+    pd.line((5,20,11,19,16,21,23,19),fill=2)
+    pd.line((6,26,12,25,17,27,24,25),fill=2)
+    for points in (((15,4),(13,8),(16,7)),((12,10),(9,14),(14,12)),
+                   ((17,12),(20,15),(16,14)),((9,17),(6,21),(12,19)),
+                   ((14,20),(10,24),(16,22)),((6,24),(3,27),(10,25)),
+                   ((20,21),(24,24),(19,23))):
+        pd.polygon(points,fill=5)
+    for x,y in ((15,4),(12,10),(9,17),(6,24),(14,20)):
+        pd.line((x,y,x-1,y+2),fill=6)
+    im.paste(pine,(0,160))
+    # Tile 324: a carved wooden marker, also used for the forest signs.
+    marker,md=canvas(16,16)
+    md.line((7,10,7,15),fill=3,width=3)
+    md.line((6,12,6,15),fill=5)
+    md.polygon([(2,2),(12,1),(14,3),(13,11),(2,12),(1,10)],fill=5,outline=1)
+    md.line((3,3,11,2),fill=7)
+    md.line((3,5,3,10),fill=4)
+    md.line((11,4,11,9),fill=3)
+    md.line((5,9,7,5,9,9),fill=8)
+    md.line((6,8,8,8),fill=7)
+    md.point((12,3),fill=3)
+    im.paste(marker,(32,160))
+    # Tile 326: curled birch bark, kept entirely inside its 16x16 tile.
+    note,nd=canvas(16,16)
+    nd.polygon([(3,2),(12,1),(14,3),(12,12),(4,14),(1,12)],fill=7,outline=3)
+    nd.line((3,2,11,1),fill=8)
+    nd.line((2,4,3,11,5,12),fill=6)
+    nd.line((12,3,11,10,12,12),fill=5)
+    nd.line((5,5,10,4),fill=4)
+    nd.line((5,7,8,7),fill=3)
+    nd.line((5,9,9,8),fill=4)
+    nd.line((3,12,5,13,10,12),fill=8)
+    nd.point((9,10),fill=5)
+    im.paste(note,(48,160))
+    # The lower cell retains a worn rune stone for future scenery placements.
+    stone,sd=canvas(16,16)
+    sd.ellipse((1,12,14,15),fill=1)
+    sd.polygon([(4,1),(10,0),(13,3),(14,12),(10,14),(2,13),(1,5)],fill=3,outline=1)
+    sd.line((4,2,9,1,11,3),fill=6)
+    sd.line((3,3,2,10,4,12),fill=5)
+    sd.line((11,5,12,10,10,12),fill=2)
+    sd.line((5,10,7,4,10,10,5,10),fill=8)
+    sd.line((4,5,5,6),fill=2)
+    sd.point((10,3),fill=4)
+    im.paste(stone,(48,176))
+    # Tile 328: a log house with a heavy thatched roof and recessed doorway.
+    hut,hd=canvas(32,32)
+    hd.ellipse((1,27,30,31),fill=1)
+    hd.rectangle((3,12,28,29),fill=4,outline=1)
+    hd.polygon([(4,13),(15,13),(15,28),(4,28)],fill=5)
+    for yy in (15,19,23,27):
+        hd.line((4,yy,27,yy),fill=3)
+        hd.line((5,yy+1,26,yy+1),fill=6 if yy==19 else 5)
+        hd.point((4,yy-1),fill=6)
+        hd.point((27,yy+1),fill=2)
+    hd.line((5,18,11,18),fill=4)
+    hd.line((22,26,26,26),fill=3)
+    hd.polygon([(1,14),(15,1),(18,1),(31,14),(30,17),(16,13),(2,17)],fill=5,outline=1)
+    hd.polygon([(2,14),(15,2),(16,4),(14,12),(4,15)],fill=6)
+    hd.polygon([(16,4),(18,2),(29,14),(20,12)],fill=4)
+    for x,y in ((5,13),(8,11),(11,8),(14,5),(18,5),(21,8),(24,11),(27,14)):
+        hd.line((x,y,x-1 if x<16 else x+1,y+2),fill=7 if x<16 else 5)
+    hd.line((3,15,12,12,16,12,29,15),fill=3)
+    hd.line((14,2,18,2),fill=7)
+    # Small amber window and deep door have distinct silhouettes at distance.
+    hd.rectangle((6,18,12,23),fill=1)
+    hd.rectangle((7,19,11,21),fill=8)
+    hd.point((7,19),fill=9)
+    hd.line((9,19,9,22),fill=3)
+    hd.line((6,24,13,24),fill=6)
+    hd.rectangle((17,19,24,30),fill=1)
+    hd.line((17,18,24,18),fill=6)
+    hd.rectangle((19,20,23,29),fill=3)
+    hd.line((20,21,20,29),fill=4)
+    hd.point((22,25),fill=7)
+    hd.line((16,30,25,30),fill=5)
+    im.paste(hut,(64,160))
+    # Tile 332 is the visible oil jar; its neck must also survive the near LOD.
+    jar,jd=canvas(16,16)
+    jd.ellipse((2,12,13,15),fill=1)
+    jd.polygon([(5,4),(10,4),(13,7),(12,12),(10,14),(5,14),(3,12),(2,8)],fill=5,outline=1)
+    jd.polygon([(4,7),(6,5),(7,5),(6,12),(5,12)],fill=7)
+    jd.line((10,7,11,10,10,12),fill=4)
+    jd.line((4,12,6,13,10,13),fill=6)
+    jd.rectangle((5,1,10,4),fill=6,outline=1)
+    jd.line((6,1,9,1),fill=8)
+    jd.line((6,3,9,3),fill=3)
+    jd.line((4,8,11,8),fill=4)
+    jd.point((5,7),fill=8)
+    im.paste(jar,(96,160))
     # Smaller depth variants are prefiltered once, never scaled by the CPU.
-    for n,box in enumerate([(0,160,32,192),(64,160,96,192),(96,176,112,192)]+
+    for n,box in enumerate([(0,160,32,192),(64,160,96,192),(96,160,112,176)]+
                            [(n*16,128,n*16+16,160) for n in range(5)]):
         small=im.crop(box).resize((16,16),Image.Resampling.NEAREST)
         im.paste(small,(n*16,224))
@@ -380,27 +466,23 @@ def main():
     mask.putdata([255 if pixel else 0 for pixel in flat_pixels(torch)])
     rgba.putalpha(mask)
     rgba.save(OUT/'torch-sheet.png')
-    # CP1251 font. Tiles are 2bpp; color 1 = ink, 2 = panel background.
-    candidates=[os.environ.get('SK_FONT',''),
-                '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf',
-                '']
-    font_path=next((x for x in candidates if x and Path(x).is_file()),None)
-    if not font_path: raise RuntimeError('Set SK_FONT to a monospace font with Cyrillic support')
-    font=ImageFont.truetype(font_path,9)
-    fonttiles=[]
-    for i in range(256):
-        im=Image.new('L',(8,8),0); d=ImageDraw.Draw(im)
-        if i != 0:
-            try: ch=bytes([i]).decode('cp1251')
-            except UnicodeDecodeError: ch=''
-            if i>=32: d.text((1,-2),ch,font=font,fill=255,stroke_width=0)
-        pixels=[1 if p>=100 else 2 for p in flat_pixels(im)]
-        if i==0: pixels=[0]*64
-        fonttiles.append(planar(pixels,2))
+    from build_hero import build as build_hero
+    build_hero(OUT,assembly)
+    from build_daycycle import build as build_daycycle
+    build_daycycle(OUT,assembly)
+    from build_torch import build as build_torch
+    build_torch(OUT,assembly)
+    # Original bitmap CP1251 font: every stroke lands on the 8x8 pixel grid.
+    # Color 1 = ink, 2 = panel; IDs stay compatible with all narrative text.
+    from build_font import font_tiles
+    fonttiles=font_tiles(planar)
     fonttiles.append(planar([2]*64,2)) # tile 256: panel; do not overwrite Cyrillic я
-    cross=Image.new('L',(16,16),2); cd=ImageDraw.Draw(cross)
-    cd.line((0,8,15,8),fill=1); cd.line((8,0,8,15),fill=1)
-    cd.rectangle((4,4,12,12),outline=1)
+    # A bright optical target on the normal dark UI. The gun still sees a
+    # white area around the exact (128,112) aiming point on a physical CRT.
+    cross=Image.new('L',(16,16),1); cd=ImageDraw.Draw(cross)
+    cd.rectangle((0,0,15,15),outline=3)
+    cd.line((1,8,14,8),fill=2); cd.line((8,1,8,14),fill=2)
+    cd.rectangle((5,5,11,11),outline=2)
     for ty,tx in ((0,0),(0,1),(1,0),(1,1)):
         fonttiles.append(planar(list(flat_pixels(cross.crop((tx*8,ty*8,tx*8+8,ty*8+8)))),2))
     # Tiles 261..268: gold panel borders; 269/270: filled/empty HUD segments.

@@ -1,6 +1,6 @@
 CC ?= cc
 CFLAGS := -std=c99 -O2 -Wall -Wextra -Werror -IData/include
-CORE := Data/core/sneskit.c Data/core/game.c Data/core/light.c Data/core/perspective.c Data/content/perspective.c Data/content/story.c Data/content/beam.c
+CORE := Data/core/sneskit.c Data/core/game.c Data/core/light.c Data/core/daycycle.c Data/core/perspective.c Data/content/perspective.c Data/content/story.c Data/content/beam.c
 .PHONY: test sanitize
 build:
 	mkdir -p build

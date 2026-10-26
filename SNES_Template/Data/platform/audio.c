@@ -6,10 +6,11 @@ extern u8 seal_sound, seal_sound_end;
 static brrsamples sounds[3];
 static SkU8 old_lamp = 0, old_room = 0, old_runes = 0, cooldown = 0;
 static SkU16 previous_tick = 0;
+static SkU8 old_time_phase = TIME_DAY;
 void audio_init(void) {
     spcBoot();
     spcAllocateSoundRegion(16);
-    spcSetSoundEntry(5, 8, 4, &heartbeat_sound_end - &heartbeat_sound, &heartbeat_sound,
+    spcSetSoundEntry(5, 8, 1, &heartbeat_sound_end - &heartbeat_sound, &heartbeat_sound,
                      &sounds[0]);
     spcSetSoundEntry(6, 8, 4, &latch_sound_end - &latch_sound, &latch_sound, &sounds[1]);
     spcSetSoundEntry(7, 8, 4, &seal_sound_end - &seal_sound, &seal_sound, &sounds[2]);
@@ -25,8 +26,11 @@ void audio_update(const Game *g) {
     } else if (g->room != old_room || g->rune_mask != old_runes) {
         spcPlaySound(2);
         cooldown = 30;
+    } else if (g->mode == G_EXPLORE && g->time_phase != old_time_phase) {
+        spcPlaySound(2);
+        cooldown = 30;
     } else if (!cooldown && g->mode == G_EXPLORE && g->tick != previous_tick && !(g->seconds & 1) &&
-               g->pulse < 4) {
+               g->pulse < 4 && game_daylight(g) < 8) {
         spcPlaySound(0);
         cooldown = 45;
     }
@@ -34,5 +38,6 @@ void audio_update(const Game *g) {
     old_room = g->room;
     old_runes = g->rune_mask;
     previous_tick = g->tick;
+    old_time_phase = g->time_phase;
     spcProcess();
 }

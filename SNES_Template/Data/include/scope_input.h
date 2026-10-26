@@ -8,4 +8,6 @@ typedef struct {
 void scope_capture_vblank(void);
 void scope_take_packet(ScopePacket *packet);
 SkU16 scope_pad_buttons(void);
+SkU16 scope_held_buttons(void);
+SkU8 scope_packets_pending(void);
 #endif

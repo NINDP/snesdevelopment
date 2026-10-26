@@ -12,6 +12,8 @@ static volatile SkU8 head = 0, tail = 0, connected = 0;
 static SkU16 last_raw_x = 0, last_raw_y = 0;
 static SkU16 previous_buttons = 0;
 static volatile SkU16 held_pad = 0;
+/* TURBO is a switch, not a button edge. Keep it on idle frames too. */
+static volatile SkU16 held_scope = 0;
 static SkU16 previous_pad = 0;
 
 void scope_capture_vblank(void) {
@@ -27,6 +29,7 @@ void scope_capture_vblank(void) {
     held_pad = pad;
     buttons = REG_JOYxLH(1);
     connected = (buttons & 0x0cff) == 0x00ff;
+    held_scope = connected ? buttons & (SSC_FIRE | SSC_CURSOR | SSC_PAUSE | SSC_TURBO) : 0;
     edges = 0;
     if (connected) {
         edges = (buttons ^ previous_buttons) & buttons;
@@ -68,7 +71,7 @@ void scope_capture_vblank(void) {
 void scope_take_packet(ScopePacket *packet) {
     static SkU16 previous_x = 0, previous_y = 0;
     SkU8 index;
-    packet->buttons = 0;
+    packet->buttons = held_scope & SSC_TURBO;
     packet->flags = 0;
     packet->valid = 0;
     packet->pad_pressed = 0;
@@ -78,7 +81,8 @@ void scope_take_packet(ScopePacket *packet) {
     if (tail == head)
         return;
     index = tail;
-    packet->buttons = queue[index].buttons;
+    packet->buttons = (queue[index].buttons & (SSC_FIRE | SSC_CURSOR | SSC_PAUSE)) |
+                      (held_scope & SSC_TURBO);
     packet->pad_pressed = queue[index].pad_pressed;
     packet->flags = queue[index].flags;
     packet->raw_x = queue[index].raw_x;
@@ -92,4 +96,10 @@ void scope_take_packet(ScopePacket *packet) {
 
 SkU16 scope_pad_buttons(void) {
     return held_pad;
+}
+SkU16 scope_held_buttons(void) {
+    return held_scope;
+}
+SkU8 scope_packets_pending(void) {
+    return head != tail;
 }

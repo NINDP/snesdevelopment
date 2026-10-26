@@ -33,6 +33,9 @@ static SkS16 previous_x = 0, previous_y = 0, previous_enemy_x = 0, previous_enem
 /* Applied in VBlank: splash and cinematic transitions use master brightness. */
 static SkU8 brightness = 15, scene_age = 0;
 static SkU16 camera_x = 0;
+static SkU8 calibration_stage = 255;
+static SkS16 calibration_x = -1, calibration_y = -1;
+static SkU8 time_banner = 255;
 static void ui_tile(SkU8 x, SkU8 y, SkU16 tile) {
     text_map[(SkU16)y * 32 + x] = tile | (7 << 10) | BG_TIL_PRIO;
 }
@@ -368,17 +371,31 @@ void video_draw(const Game *g, SkU8 scope) {
     SkU8 i, bg, near, changed, world, cinematic, corridor, projected, cut;
     SkU16 keys[10];
     const StoryLine *line;
+    calibration_stage = 255;
     if (g->mode == G_EXPLORE) {
         if (current_bg != 10 + g->room) {
             hide();
             perspective_enter(g->room);
             current_bg = 10 + g->room;
             memset(last_keys, 255, sizeof(last_keys));
+            time_banner = 255;
         }
         perspective_draw(g);
-        perspective_overlay(224);
+        i = g->time_notice ? g->time_phase : 254;
+        if (i != time_banner) {
+            time_banner = i;
+            redraw = 1;
+            memset(text_map, 0, sizeof(text_map));
+            dirty = 1;
+            if (g->time_notice) {
+                panel(25, 3);
+                text(2, 26, game_time_event(g));
+            }
+        }
+        perspective_overlay(g->time_notice ? 200 : 224);
         return;
     }
+    time_banner = 255;
     projected = (g->mode >= G_DIALOGUE && g->mode <= G_PAUSE) || g->mode == G_BELL;
     if (g->mode == G_DIALOGUE && g->dialogue == D_PROLOG)
         projected = 0;
@@ -540,6 +557,21 @@ void video_draw(const Game *g, SkU8 scope) {
             text(1, 25, TXT_PUZZLE_WRONG);
     } else if (g->mode == G_JOURNAL) {
         panel(2, 26);
+        text(1, 10, TXT_WORLD_DAY);
+        number(7, 10, g->day_number);
+        if (redraw) {
+            SkU8 hour = g->day_seconds >> 5;
+            SkU8 minute = ((g->day_seconds & 31) * 60) >> 5;
+            char clock_text[6];
+            clock_text[0] = '0' + hour / 10;
+            clock_text[1] = '0' + hour % 10;
+            clock_text[2] = ':';
+            clock_text[3] = '0' + minute / 10;
+            clock_text[4] = '0' + minute % 10;
+            clock_text[5] = 0;
+            text(12, 10, clock_text);
+        }
+        text(20, 10, game_time_name(g));
         text(1, 3, TXT_JOURNAL);
         text(1, 4, TXT_OIL);
         number(8, 4, g->oil);
@@ -555,27 +587,27 @@ void video_draw(const Game *g, SkU8 scope) {
                (g->memories & 1 ? 1 : 0) + (g->memories & 2 ? 1 : 0) + (g->memories & 4 ? 1 : 0));
         text(16, 18, TXT_WARDS);
         number(25, 18, g->wards);
-        text(1, 20, TXT_BELL_STATUS);
-        number(12, 20, g->memories & 8 ? 3 : g->bell_step);
-        text(1, 22, g->notice ? notice_text(g->notice) : TXT_OPTIONAL);
+        if (g->room == 3) {
+            text(1, 20, TXT_NODES);
+            number(8, 20, g->charge[0]);
+            number(15, 20, g->charge[1]);
+            number(22, 20, g->charge[2]);
+        } else {
+            text(1, 20, TXT_BELL_STATUS);
+            number(12, 20, g->memories & 8 ? 3 : g->bell_step);
+        }
+        text(1, 22, g->notice ? notice_text(g->notice) : game_time_hint(g));
         if (g->room == 1) {
             text(17, 20, TXT_SIGNS);
             number(24, 20, g->forest_step);
             text(26, 20, "/3");
         }
-        if (g->room == 3) {
-            text(1, 21, TXT_NODES);
-            number(8, 21, g->charge[0]);
-            number(15, 21, g->charge[1]);
-            number(22, 21, g->charge[2]);
-        }
-        text(1, 23, TXT_WARD_HELP);
         if (redraw) {
             near = game_nearby(g);
             if (near != SK_NONE)
                 text(1, 24, game_hotspot(g->room, near)->name);
         }
-        text(1, 25, "Y / B / A: BACK");
+        text(1, 26, TXT_BACK);
     } else if (g->mode == G_PAUSE) {
         panel(6, 22);
         text(1, 7, TXT_PAUSE);
@@ -596,6 +628,14 @@ void video_draw(const Game *g, SkU8 scope) {
     (void)scope;
 }
 void video_calibration(SkU8 stage, SkS16 x, SkS16 y) {
+    SkU8 row, column;
+    /* Optical packets can arrive every frame with TURBO held. A stable target
+       needs no repeated full UI rebuild or 1792-byte upload on those frames. */
+    if (stage == calibration_stage && x == calibration_x && y == calibration_y && current_bg == 0)
+        return;
+    calibration_stage = stage;
+    calibration_x = x;
+    calibration_y = y;
     brightness = 15;
     redraw = 1;
     dirty = 1;
@@ -605,6 +645,11 @@ void video_calibration(SkU8 stage, SkS16 x, SkS16 y) {
     panel(2, 26);
     text(2, 5, TXT_SCOPE);
     text(2, 7, TXT_CALIBRATE);
+    /* Unused DEL glyph 127 is solid white: a 32x32 optical patch around
+       the 16x16 crosshair gives a real CRT Scope enough light to latch. */
+    for (row = 12; row < 16; ++row)
+        for (column = 14; column < 18; ++column)
+            ui_tile(column, row, 127);
     text_map[13 * 32 + 15] = 257 | (7 << 10) | BG_TIL_PRIO;
     text_map[13 * 32 + 16] = 258 | (7 << 10) | BG_TIL_PRIO;
     text_map[14 * 32 + 15] = 259 | (7 << 10) | BG_TIL_PRIO;
@@ -617,7 +662,9 @@ void video_calibration(SkU8 stage, SkS16 x, SkS16 y) {
     }
     REG_HDMAEN = 0;
     REG_TMW = 0;
-    setPaletteColor(30, RGB5(24, 25, 24));
-    setPaletteColor(29, RGB5(1, 2, 3));
+    /* Keep instructions readable on the same dark panel as the rest of the
+       UI. Only the optical target is bright, centered at (128,112). */
+    setPaletteColor(30, RGB5(1, 2, 3));
+    setPaletteColor(29, RGB5(29, 29, 26));
     memset(last_keys, 255, sizeof(last_keys));
 }

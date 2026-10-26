@@ -1,0 +1,31 @@
+#include <snes.h>
+#include "../include/torch.h"
+#include "../include/video_layout.h"
+extern u8 torch_tiles, torch_palette, sprite_tiles;
+void torch_oam_draw(SkU16 offset);
+void torch_oam_hide(void);
+void torch_enter(void) {
+    dmaCopyVram(&torch_tiles, VIDEO_OBJ_TILES + 1536, TORCH_TILE_BYTES);
+    dmaCopyCGram(&torch_palette, 224, 32);
+    torch_oam_hide();
+}
+void torch_leave(void) {
+    /* Tile96 begins3072B into the legacy atlas. Restore it for the prologue. */
+    dmaCopyVram(&sprite_tiles + 3072, VIDEO_OBJ_TILES + 1536, TORCH_TILE_BYTES);
+    torch_oam_hide();
+}
+void torch_draw(const Game *g) {
+    SkU16 offset;
+    if (!g->lamp) {
+        torch_oam_hide();
+        return;
+    }
+    if (!g->oil) {
+        torch_oam_hide();
+        return;
+    }
+    /* Precomputed eight-sprite poses: two shifts, no software multiply,
+       division, random source, WRAM particle pool, or frame-time OAM loop. */
+    offset = ((SkU16)((g->direction >> 1) & 3) << 10) + ((g->tick & 31) << 5);
+    torch_oam_draw(offset);
+}

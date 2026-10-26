@@ -17,7 +17,7 @@ perspective_obj:
     lda 10,s
     sta.l oamMemory+2,x
     lda 11,s
-    ora #$20
+    ora #$28 ; Priority 2, palette 4: the torch's outer falloff also shades OBJ.
     sta.l oamMemory+3,x
     rep #$20
     lda 4,s
@@ -66,6 +66,129 @@ perspective_clear:
     bne -
     rep #$20
     rtl
+ ; Fixed 32x48 hero: six 16x16 OBJ cells, palette 5, priority 2.
+; One call writes twelve pairs rather than invoking the generic writer six
+; times. All X positions are positive; clear only these six size/ninth bits.
+hero_draw:
+    lda 4,s
+    asl a
+    asl a
+    tax
+    lda.l hero_oam_template+0
+    sta.l oamMemory+0,x
+    lda.l hero_oam_template+2
+    sta.l oamMemory+2,x
+    lda.l hero_oam_template+4
+    sta.l oamMemory+4,x
+    lda.l hero_oam_template+6
+    sta.l oamMemory+6,x
+    lda.l hero_oam_template+8
+    sta.l oamMemory+8,x
+    lda.l hero_oam_template+10
+    sta.l oamMemory+10,x
+    lda.l hero_oam_template+12
+    sta.l oamMemory+12,x
+    lda.l hero_oam_template+14
+    sta.l oamMemory+14,x
+    lda.l hero_oam_template+16
+    sta.l oamMemory+16,x
+    lda.l hero_oam_template+18
+    sta.l oamMemory+18,x
+    lda.l hero_oam_template+20
+    sta.l oamMemory+20,x
+    lda.l hero_oam_template+22
+    sta.l oamMemory+22,x
+    lda 4,s
+    and #3
+    tax
+    sep #$20
+    lda.l hero_high_first,x
+    sta.b tcc__r0
+    lda.l hero_high_second,x
+    sta.b tcc__r0h
+    lda.l hero_high_third,x
+    sta.b tcc__r1
+    rep #$20
+    lda 4,s
+    lsr a
+    lsr a
+    tax
+    sep #$20
+    lda.l oamMemory+512,x
+    and.b tcc__r0
+    sta.l oamMemory+512,x
+    lda.l oamMemory+513,x
+    and.b tcc__r0h
+    sta.l oamMemory+513,x
+    lda.l oamMemory+514,x
+    and.b tcc__r1
+    sta.l oamMemory+514,x
+    rep #$20
+    rtl
+; Slots52..59: halo32, two torch cells and five independently aged embers.
+; X indexes a bank-contained4096B ROM table; all destination addresses fixed.
+torch_oam_draw:
+    lda 4,s
+    tax
+    lda.l torch_oam_frames+0,x
+    sta.l oamMemory+208
+    lda.l torch_oam_frames+2,x
+    sta.l oamMemory+210
+    lda.l torch_oam_frames+4,x
+    sta.l oamMemory+212
+    lda.l torch_oam_frames+6,x
+    sta.l oamMemory+214
+    lda.l torch_oam_frames+8,x
+    sta.l oamMemory+216
+    lda.l torch_oam_frames+10,x
+    sta.l oamMemory+218
+    lda.l torch_oam_frames+12,x
+    sta.l oamMemory+220
+    lda.l torch_oam_frames+14,x
+    sta.l oamMemory+222
+    lda.l torch_oam_frames+16,x
+    sta.l oamMemory+224
+    lda.l torch_oam_frames+18,x
+    sta.l oamMemory+226
+    lda.l torch_oam_frames+20,x
+    sta.l oamMemory+228
+    lda.l torch_oam_frames+22,x
+    sta.l oamMemory+230
+    lda.l torch_oam_frames+24,x
+    sta.l oamMemory+232
+    lda.l torch_oam_frames+26,x
+    sta.l oamMemory+234
+    lda.l torch_oam_frames+28,x
+    sta.l oamMemory+236
+    lda.l torch_oam_frames+30,x
+    sta.l oamMemory+238
+    sep #$20
+    lda #2
+    sta.l oamMemory+525
+    lda #0
+    sta.l oamMemory+526
+    rep #$20
+    rtl
+torch_oam_hide:
+    sep #$20
+    lda #240
+    sta.l oamMemory+209
+    sta.l oamMemory+213
+    sta.l oamMemory+217
+    sta.l oamMemory+221
+    sta.l oamMemory+225
+    sta.l oamMemory+229
+    sta.l oamMemory+233
+    sta.l oamMemory+237
+    rep #$20
+    rtl
+hero_oam_template:
+    .db 112,116,0,$2a,128,116,2,$2a
+    .db 112,132,4,$2a,128,132,6,$2a
+    .db 112,148,8,$2a,128,148,10,$2a
+hero_high_first: .db $00,$03,$0f,$3f
+hero_high_second: .db $f0,$c0,$00,$00
+hero_high_third: .db $ff,$ff,$ff,$fc
 perspective_oam_clearbits: .db $fc,$f3,$cf,$3f
 perspective_oam_sizes: .db 2,8,32,128
 perspective_oam_ninth: .db 1,4,16,64

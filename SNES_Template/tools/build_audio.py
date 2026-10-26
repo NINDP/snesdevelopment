@@ -17,14 +17,18 @@ def main():
     (ROOT/'Data/content').mkdir(parents=True,exist_ok=True)
     OUT.mkdir(parents=True,exist_ok=True)
     rng=random.Random(1193); rate=8000
-    heartbeat=[int(12000*math.sin(2*math.pi*60*i/rate)*math.exp(-i/160)) for i in range(800)]
+    # A 60 Hz thump needs no 8 kHz sample stream. Preserve its 100 ms envelope
+    # at 2 kHz: thirteen BRR blocks fit the normal SPC startup transfer, so a
+    # heartbeat cannot stall forest rendering with repeated streaming bursts.
+    heartbeat_rate=2000
+    heartbeat=[int(12000*math.sin(2*math.pi*60*i/heartbeat_rate)*math.exp(-i/40)) for i in range(200)]
     latch=[int(rng.uniform(-1,1)*8000*math.exp(-i/22)) for i in range(160)]
     seal=[int(8000*(math.sin(2*math.pi*440*i/rate)+.3*math.sin(2*math.pi*660*i/rate))*math.exp(-i/750)) for i in range(2400)]
     asm=['; Original generated BRR effects.','.include "hdr.asm"']
     for name,samples in [('heartbeat',heartbeat),('latch',latch),('seal',seal)]:
         (OUT/(name+'.brr')).write_bytes(encode_brr(samples))
         with wave.open(str(OUT/(name+'.wav')),'wb') as f:
-            f.setnchannels(1); f.setsampwidth(2); f.setframerate(rate)
+            f.setnchannels(1); f.setsampwidth(2); f.setframerate(heartbeat_rate if name=='heartbeat' else rate)
             f.writeframes(struct.pack('<%dh'%len(samples),*samples))
         asm+=['.section "sfx_%s" superfree'%name,name+'_sound:','.incbin "assets/generated/%s.brr"'%name,name+'_sound_end:','.ends']
     (ROOT/'Data/content/audio.asm').write_text('\n'.join(asm)+'\n')

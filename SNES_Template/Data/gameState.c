@@ -7,7 +7,7 @@ static SkInput frame_input;
 static SkU8 draw_pending;
 static SkClock clock;
 static ScopePacket packet;
-static SkU8 calibration = 0, scope_ready = 0;
+static SkU8 calibration = 0, scope_ready = 0, calibration_wait_release = 0;
 static SkU16 previous_vblank = 0;
 static void map_button(SkInput *in, SkU16 pad, SkU16 edge, SkU16 key, SkU16 action) {
     if (pad & key)
@@ -37,6 +37,15 @@ static SkInput read_input(void) {
     map_button(&in, pad, edge, KEY_R, SK_AIM);
     map_button(&in, pad, edge, KEY_L, SK_TURN_LEFT);
     map_button(&in, pad, edge, KEY_START, SK_PAUSE);
+    /* The first gun click opens an explicit calibration target. Do not use
+       the menu click itself as the centre, or silently ignore an unready gun. */
+    if (packet.connected && !scope_ready && (packet.buttons & (SSC_FIRE | SSC_CURSOR))) {
+        calibration = 1;
+        calibration_wait_release = 1;
+        packet.buttons = 0;
+        packet.valid = 0;
+        return in;
+    }
     if (packet.connected && scope_ready) {
         in.scope = 1;
         in.x = packet.raw_x + scope_centerh;
@@ -53,31 +62,42 @@ static SkInput read_input(void) {
             in.pressed |= SK_PAUSE;
     }
     if (game.mode == G_EXPLORE && in.scope && in.aim_valid) {
-        in.aim_valid = perspective_pick(&game, in.x, in.y, &in.x, &in.y);
+        in.aim_valid = perspective_pick_target(&game, in.x, in.y, &in.x, &in.y);
     }
     if ((edge & KEY_SELECT) && packet.connected) {
         calibration = 1;
         scope_ready = 0;
+        calibration_wait_release = 1;
     }
     return in;
 }
 static void calibrate(void) {
     video_calibration(calibration, packet.raw_x + scope_centerh, packet.raw_y + scope_centerv);
     flashlight_prepare(&game, 0);
-    if (calibration == 1 && (packet.buttons & SSC_FIRE) && packet.valid && !packet.flags) {
-        scope_centerh = 128 - packet.raw_x;
-        scope_centerv = 112 - packet.raw_y;
-        calibration = 2;
+    if (calibration_wait_release) {
+        /* Drain already published gun edges before arming the target. A lag
+           frame may leave old TURBO shots queued after the trigger releases. */
+        if (!(scope_held_buttons() & (SSC_FIRE | SSC_CURSOR)) && !scope_packets_pending())
+            calibration_wait_release = 0;
+    } else {
+        if (calibration == 1 && (packet.buttons & SSC_FIRE) && packet.valid && !packet.flags) {
+            scope_centerh = 128 - packet.raw_x;
+            scope_centerv = 112 - packet.raw_y;
+            calibration = 2;
+        } else if (calibration == 2 && (packet.buttons & SSC_CURSOR)) {
+            calibration = 0;
+            scope_ready = 1;
+        }
     }
-    if (calibration == 2 && (packet.buttons & SSC_CURSOR)) {
-        calibration = 0;
-        scope_ready = 1;
-    }
-    if (packet.pad_pressed & KEY_B)
+    if (packet.pad_pressed & KEY_B) {
         calibration = 1;
+        scope_ready = 0;
+        calibration_wait_release = 1;
+    }
     if (!packet.connected || (packet.pad_pressed & KEY_START)) {
         calibration = 0;
         scope_ready = 0;
+        calibration_wait_release = 0;
     }
     if (!calibration) {
         setPaletteColor(29, RGB5(28, 28, 24));
@@ -104,6 +124,11 @@ void GameUpdate(void) {
     delta = snes_vblank_count - previous_vblank;
     previous_vblank = snes_vblank_count;
     elapsed = delta > 4 ? 4 : (SkU8)delta;
+    /* Service the stream early, after VRAM DMA and before scene rendering.
+       Its final ACK/port restore must not straddle the next long NMI.
+       Calibration also needs one service pass per frame. Sound events use
+       the previous update's state, adding at most one video frame. */
+    audio_update(&game);
     if (calibration) {
         calibrate();
         return;
@@ -127,7 +152,6 @@ void GameDraw(void) {
     if (!draw_pending)
         return;
     video_draw(&game, frame_input.scope);
-    audio_update(&game);
 }
 void GameEnd(void) {
     REG_HDMAEN = 0;

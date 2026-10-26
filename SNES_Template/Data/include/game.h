@@ -76,6 +76,9 @@ enum DialogueId {
 };
 enum ChoiceId { C_EGOR, C_CONFESS, C_MIRO, C_FINAL };
 enum EndingId { END_GOOD, END_BAD, END_SECRET };
+enum TimePhase { TIME_NIGHT, TIME_DAWN, TIME_DAY, TIME_DUSK };
+#define DAY_CYCLE_SECONDS 768
+#define DAY_START_SECONDS 512
 typedef struct {
     const char *speaker;
     const char *text;
@@ -85,8 +88,7 @@ typedef struct {
     SkS16 x, y;
     const char *name;
 } Hotspot;
-/* First 46 bytes retain their ABI; optional systems and text cadence fill the remaining six bytes.
- */
+/* Existing 52-byte state prefix is stable; the world clock follows it. */
 typedef struct {
     SkU8 mode, room, dialogue, page, option, choice;
     SkU8 lamp, direction, oil, fear, forest_step, chapel_step;
@@ -95,6 +97,8 @@ typedef struct {
     SkU16 flags, tick, seconds, interactions;
     SkS16 x, y, destination_x, destination_y, enemy_x, enemy_y;
     SkU8 memories, echo_charge, wards, bell_step, ward_timer, text_delay;
+    SkU16 day_seconds, day_number;
+    SkU8 sun_level, time_phase, time_notice;
 } Game;
 #define TORCH_RADIUS 64
 #define CORRIDOR_START 80
@@ -118,4 +122,11 @@ SkU8 game_can_walk(SkU8 room, SkS16 x, SkS16 y);
 void light_span(const Game *g, SkS16 y, SkS16 *left, SkS16 *right);
 SkU8 light_sees(const Game *g, SkS16 x, SkS16 y);
 SkU8 light_direction(SkS16 dx, SkS16 dy);
+void daycycle_init(Game *g);
+void daycycle_second(Game *g);
+SkU8 game_daylight(const Game *g);
+SkU8 game_visible(const Game *g, SkS16 x, SkS16 y);
+const char *game_time_name(const Game *g);
+const char *game_time_event(const Game *g);
+const char *game_time_hint(const Game *g);
 #endif

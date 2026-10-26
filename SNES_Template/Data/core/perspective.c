@@ -20,3 +20,40 @@ SkU8 perspective_pick(const Game *g, SkS16 sx, SkS16 sy, SkS16 *x, SkS16 *y) {
     *y = g->y + perspective_pick_y[index];
     return *x >= 0 && *x <= 255 && *y >= 24 && *y < 192;
 }
+SkU8 perspective_pick_target(const Game *g, SkS16 sx, SkS16 sy, SkS16 *x, SkS16 *y) {
+    const PerspectiveObject *object;
+    SkS16 ox, oy, dx, dy;
+    SkU8 i, half, height;
+    /* A player aims at a villager's body, not the tiny floor point at their
+       feet. Pick the visible billboard before converting the floor. The ROM
+       list is near-to-far, matching OBJ priority and the renderer's LODs. */
+    i = (g->direction >> 1) & 3;
+    dx = sx - perspective_light_x[i];
+    dy = sy - perspective_light_y[i];
+    if (game_daylight(g) || (g->lamp && g->oil && dx >= -79 && dx <= 79 && dy >= -79 && dy <= 79 &&
+        dx * dx + dy * dy <= 79 * 79)) {
+        object = perspective_objects[g->room];
+        for (i = 0; i < perspective_counts[g->room]; ++i, ++object) {
+            if (object->kind & PERSPECTIVE_DECOR)
+                continue;
+            if (object->y < g->y - 112)
+                continue;
+            if (!perspective_project(g, object->x, object->y, &ox, &oy))
+                continue;
+            half = 8;
+            height = 16;
+            if (object->kind == 0 && oy >= 140)
+                height = 32;
+            if ((object->kind == 1 && oy >= 134) || (object->kind == 3 && oy >= 140)) {
+                half = 16;
+                height = 32;
+            }
+            if (sx < ox - half || sx >= ox + half || sy < oy - height || sy >= oy)
+                continue;
+            *x = object->x;
+            *y = object->y;
+            return 1;
+        }
+    }
+    return perspective_pick(g, sx, sy, x, y);
+}

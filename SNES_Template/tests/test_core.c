@@ -126,6 +126,9 @@ static void test_darkness_pause_and_recovery(void) {
     game_new(&g);
     finish(&g);
     assert(!g.lamp);
+    g.day_seconds = 640;
+    g.sun_level = 0;
+    g.time_phase = TIME_NIGHT;
     press(&g, SK_ACTION);
     assert(g.mode == G_DIALOGUE && g.dialogue == D_NO_LIGHT);
     finish(&g);
@@ -206,6 +209,64 @@ static void test_scope_destination(void) {
     game_tick(&g, &in);
     assert(g.mode == G_DIALOGUE && g.dialogue == D_HEAD);
 }
+static void test_scope_invalid_ui(void) {
+    Game g;
+    SkInput in = none;
+    SkU8 page;
+    game_init(&g);
+    g.mode = G_MENU;
+    in.scope = 1;
+    in.fire = 1;
+    /* Noise/lost optical latch must not choose menu items or skip text. */
+    game_tick(&g, &in);
+    assert(g.mode == G_MENU);
+    in.aim_valid = 1;
+    in.offscreen = 1;
+    game_tick(&g, &in);
+    assert(g.mode == G_MENU);
+    in.offscreen = 0;
+    game_tick(&g, &in);
+    assert(g.mode == G_DIALOGUE);
+    page = g.page;
+    g.revealed = story_line(g.dialogue, g.page)->length;
+    in.aim_valid = 0;
+    game_tick(&g, &in);
+    assert(g.mode == G_DIALOGUE && g.page == page);
+}
+static void test_scope_billboard(void) {
+    Game g;
+    SkInput in = none;
+    SkS16 sx, sy, wx, wy;
+    game_new(&g);
+    finish(&g);
+    g.x = g.destination_x = 56;
+    g.y = g.destination_y = 100;
+    g.lamp = 1;
+    assert(perspective_project(&g, 56, 78, &sx, &sy));
+    assert(perspective_pick_target(&g, sx, sy - 16, &wx, &wy));
+    assert(wx == 56 && wy == 78);
+    in.scope = in.fire = in.aim_valid = 1;
+    in.x = wx;
+    in.y = wy;
+    game_tick(&g, &in);
+    assert(g.mode == G_DIALOGUE && g.dialogue == D_HEAD);
+    /* Hidden silhouettes are not target boxes when the torch is out. */
+    g.lamp = 0;
+    g.sun_level = 0;
+    assert(perspective_pick_target(&g, sx, sy - 16, &wx, &wy));
+    assert(wx != 56 || wy != 78);
+    /* A foreground tree crown overlaps walkable ground. Its decorative
+       root at (44,192) is outside the map and must never capture a click. */
+    g.room = 1;
+    g.x = 44;
+    g.y = 180;
+    g.direction = 4;
+    g.lamp = 1;
+    assert(perspective_pick_target(&g, 112, 158, &wx, &wy));
+    assert(perspective_pick(&g, 112, 158, &sx, &sy));
+    assert(wx == sx && wy == sy);
+    assert(game_can_walk(g.room, wx, wy));
+}
 static void test_clock_and_text(void) {
     SkClock clock = {0};
     unsigned i, ticks = 0;
@@ -226,7 +287,7 @@ static void test_clock_and_text(void) {
             assert(strlen(line->text) <= 154);
             assert(strlen(line->text) == line->length);
         }
-    assert(sizeof(Game) == 52);
+    assert(sizeof(Game) == 60);
 }
 
 static void test_optional_systems(void) {
@@ -394,7 +455,68 @@ static void test_perspective(void) {
     assert(!perspective_pick(&g, -1, 164, &wx, &wy));
 }
 
+static void test_daycycle(void) {
+    Game g;
+    unsigned i, mode;
+    SkU16 day, second;
+    game_new(&g);
+    finish(&g);
+    assert(g.day_number == 1 && g.day_seconds == DAY_START_SECONDS && g.sun_level == 16);
+    assert(game_visible(&g, 20, 90) && !light_sees(&g, 20, 90));
+    g.fear = 20;
+    for (i = 0; i < 60; ++i)
+        game_tick(&g, &none);
+    assert(g.day_seconds == DAY_START_SECONDS + 1 && g.fear == 19 && g.oil == 120);
+    for (mode = G_DIALOGUE; mode <= G_BELL; ++mode) {
+        if (mode == G_EXPLORE || mode == G_END || mode == G_HELP || mode == G_CREDITS)
+            continue;
+        g.mode = mode;
+        second = g.day_seconds;
+        for (i = 0; i < 120; ++i)
+            game_tick(&g, &none);
+        assert(g.day_seconds == second);
+    }
+    g.mode = G_EXPLORE;
+    g.day_seconds = 575;
+    daycycle_second(&g);
+    assert(g.time_phase == TIME_DUSK && g.sun_level == 16 && g.time_notice == 180);
+    for (i = 0; i < 64; ++i)
+        daycycle_second(&g);
+    assert(g.time_phase == TIME_NIGHT && !game_daylight(&g));
+    assert(!game_visible(&g, 20, 90));
+    g.room = 1;
+    game_tick(&g, &none);
+    assert(g.enemy_active);
+    second = g.day_seconds;
+    day = g.day_number;
+    g.checkpoint_room = 1;
+    game_checkpoint(&g);
+    assert(g.day_seconds == second && g.day_number == day);
+    g.day_seconds = 767;
+    daycycle_second(&g);
+    assert(g.day_seconds == 0 && g.day_number == day + 1);
+    for (i = 0; i < 224; ++i)
+        daycycle_second(&g);
+    assert(g.time_phase == TIME_DAY && g.sun_level == 16);
+    g.mode = G_EXPLORE;
+    game_tick(&g, &none);
+    assert(!g.enemy_active);
+    g.room = 2;
+    assert(!game_daylight(&g));
+    g.room = 3;
+    game_tick(&g, &none);
+    assert(!game_daylight(&g) && g.enemy_active);
+    /* A full solar cycle is exact; neither tick nor elapsed-second wrap
+       rewinds world time or aliases the day counter. */
+    second = g.day_seconds;
+    day = g.day_number;
+    for (i = 0; i < DAY_CYCLE_SECONDS; ++i)
+        daycycle_second(&g);
+    assert(g.day_seconds == second && g.day_number == day + 1);
+}
+
 int main(void) {
+    test_daycycle();
     test_perspective();
     test_corridor();
     test_radial_torch();
@@ -404,6 +526,8 @@ int main(void) {
     test_puzzle_back_and_wrong_order();
     test_endings();
     test_scope_destination();
+    test_scope_invalid_ui();
+    test_scope_billboard();
     test_optional_systems();
     puts("PASS: radial torch, fuel, fear, pause, recovery, puzzles, choices, all endings, restart, clocks");
     return 0;

@@ -11,7 +11,7 @@ import re
 import struct
 from pathlib import Path
 from libretro import Emulator, ROOT
-from rom_smoke import Runner
+from rom_smoke import Runner, daylight
 
 def profile(core, label, pal=False):
     emulator = Emulator(core, False, pal)
@@ -47,6 +47,7 @@ def profile(core, label, pal=False):
         previous = stamp()
         updates = 0
         max_gap = 0
+        emulator.audio_peak = 0
         for frame in range(600):
             if name.endswith('-walk'):
                 emulator.buttons = {(7, 4, 6, 5)[(frame // 70) % 4]}
@@ -61,9 +62,13 @@ def profile(core, label, pal=False):
         emulator.buttons = set()
         assert emulator.state()['mode'] == 3
         assert updates == 600 and max_gap == 1, (name, updates, max_gap)
+        audible=daylight(emulator.state())<8
+        if audible:assert emulator.audio_peak > 0, (name, 'SPC output stopped')
         records.append({'scenario': name, 'video_frames': 600,
-                        'updates': updates, 'max_vblank_gap': max_gap})
-    report = {'label': label, 'region': 'PAL' if pal else 'NTSC', 'cadence': records}
+                        'updates': updates, 'max_vblank_gap': max_gap,
+                        'audio_peak': emulator.audio_peak,'heartbeat_expected':audible})
+    report = {'label': label, 'region': 'PAL' if pal else 'NTSC', 'cadence': records,
+              'rom_sha256': json.loads((ROOT / 'build/link_manifest.json').read_text())['rom_sha256']}
     (ROOT / 'build').mkdir(exist_ok=True)
     (ROOT / 'build' / ('profile-' + label + ('-pal' if pal else '') + '.json')).write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report))
