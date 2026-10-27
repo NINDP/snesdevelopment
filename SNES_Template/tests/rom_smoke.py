@@ -121,7 +121,23 @@ class Runner:
                     for hx,hy in HOTSPOTS[room]:
                         if abs(tx-hx)+abs(ty-hy)<=20:
                             tx=max(12,min(244,tx+(20 if tx>=hx else -20)))
-                self.action(tx,ty)
+                sx, sy = self.screen_point(tx, ty)
+                before = self.e.state()
+
+                self.action(tx, ty)
+
+                after = self.e.state()
+
+                if self.scope:
+                    print(
+                        "SCOPE DEBUG:",
+                        "position=", (before["x"], before["y"]),
+                        "requested=", (tx, ty),
+                        "screen=", (sx, sy),
+                        "actual_destination=",
+                        (after["destination_x"], after["destination_y"]),
+                        flush=True
+                    )
                 for _ in range(60):
                     state=self.e.state()
                     if state['room']!=room or state['mode']!=3:return
