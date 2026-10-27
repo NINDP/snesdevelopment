@@ -27,10 +27,12 @@ def hdma_rows(rows):
 
 def torch_tables(out,assembly):
     from build_hero import FLAME_CENTERS
+    from build_torch import PLANTED_FLAME
+    centers=(*FLAME_CENTERS,PLANTED_FLAME)
     assembly+=['.section "perspective_torch" superfree']
-    for table in range(16):
+    for table in range(20):
         radius=TORCH_RADII[table&3]
-        center_x,center_y=FLAME_CENTERS[table>>2]
+        center_x,center_y=centers[table>>2]
         windows=[]
         brightness=[]
         inner=radius-22
@@ -127,7 +129,7 @@ def build(out, assembly, palette):
     rooms=json.loads((ROOT/'assets/story.json').read_text())['rooms']
     props=[[(256,0),(258,0),(332,2),(328,3),(324,2),(38,2)],
            [(326,2),(260,0),(324,2),(324,2),(358,2),(328,3),(332,2),(324,2),(38,2),(328,3)],
-           [(262,0),(264,0),(332,2),(328,3),(328,3),(326,2),(64,2),(326,2),(328,3)],
+           [(262,0),(264,0),(332,2),(328,3),(328,3),(326,2),(480,2),(326,2),(328,3)],
            [(260,0),(328,3),(38,2),(38,2),(38,2),(328,3),(332,2),(328,3),(38,2)]]
     decor=[[(48,62,328,3),(196,67,328,3)],
            [(x,y+20,320,1) for x,y in [(70,37),(116,36),(166,35),(221,40),(27,74),(150,106),(44,172),(213,174),(244,154)]],

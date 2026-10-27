@@ -24,13 +24,18 @@ def main():
     heartbeat=[int(12000*math.sin(2*math.pi*60*i/heartbeat_rate)*math.exp(-i/40)) for i in range(200)]
     latch=[int(rng.uniform(-1,1)*8000*math.exp(-i/22)) for i in range(160)]
     seal=[int(8000*(math.sin(2*math.pi*440*i/rate)+.3*math.sin(2*math.pi*660*i/rate))*math.exp(-i/750)) for i in range(2400)]
+    # A short two-partial bell fits one startup transfer while the forest is
+    # animating. A long seal stream is unsuitable for a live time warning.
+    chime=[int(9000*(math.sin(2*math.pi*420*i/2000)+.25*math.sin(2*math.pi*780*i/2000))*math.exp(-i/38)) for i in range(160)]
+    bow=[int(11000*(.7*math.sin(2*math.pi*170*i/2000)+.3*rng.uniform(-1,1))*math.exp(-i/24)) for i in range(144)]
+    impact=[int(10000*(math.sin(2*math.pi*(650*i/2000-950*(i/2000)**2))+.2*rng.uniform(-1,1))*math.exp(-i/30)) for i in range(160)]
     asm=['; Original generated BRR effects.','.include "hdr.asm"']
-    for name,samples in [('heartbeat',heartbeat),('latch',latch),('seal',seal)]:
+    for name,samples in [('heartbeat',heartbeat),('latch',latch),('seal',seal),('chime',chime),('bow',bow),('impact',impact)]:
         (OUT/(name+'.brr')).write_bytes(encode_brr(samples))
         with wave.open(str(OUT/(name+'.wav')),'wb') as f:
-            f.setnchannels(1); f.setsampwidth(2); f.setframerate(heartbeat_rate if name=='heartbeat' else rate)
+            f.setnchannels(1); f.setsampwidth(2); f.setframerate(2000 if name in ('heartbeat','chime','bow','impact') else rate)
             f.writeframes(struct.pack('<%dh'%len(samples),*samples))
         asm+=['.section "sfx_%s" superfree'%name,name+'_sound:','.incbin "assets/generated/%s.brr"'%name,name+'_sound_end:','.ends']
     (ROOT/'Data/content/audio.asm').write_text('\n'.join(asm)+'\n')
-    print('Generated original heartbeat, latch and seal WAV/BRR')
+    print('Generated six original ambient and combat WAV/BRR effects')
 if __name__=='__main__': main()

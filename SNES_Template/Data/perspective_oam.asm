@@ -19,6 +19,29 @@ perspective_obj:
     lda 11,s
     ora #$28 ; Priority 2, palette 4: the torch's outer falloff also shades OBJ.
     sta.l oamMemory+3,x
+    ; Scenery slots are written exactly once after perspective_clear, which
+    ; resets all high bits. Most are positive-X 16px cells and need no flags.
+    ; Independent combat slots can also skip the full path while their whole
+    ; high-table byte is zero. A previous negative X takes the normal path,
+    ; clearing its ninth bit when the sprite moves back onto the screen.
+    lda 12,s
+    bne perspective_obj_flags
+    lda 7,s
+    bne perspective_obj_flags
+    rep #$20
+    lda 4,s
+    cmp #50
+    bcc perspective_obj_done
+    lsr a
+    lsr a
+    tax
+    sep #$20
+    lda.l oamMemory+512,x
+    bne perspective_obj_flags
+perspective_obj_done:
+    rep #$20
+    rtl
+perspective_obj_flags:
     rep #$20
     lda 4,s
     and #3
@@ -55,16 +78,37 @@ perspective_obj:
 perspective_clear:
     ldx #0
     sep #$20
-    lda #240
 -:
+    lda #240
     sta.l oamMemory+1,x
-    inx
-    inx
-    inx
-    inx
-    cpx #240
+    sta.l oamMemory+5,x
+    sta.l oamMemory+9,x
+    sta.l oamMemory+13,x
+    sta.l oamMemory+17,x
+    sta.l oamMemory+21,x
+    sta.l oamMemory+25,x
+    sta.l oamMemory+29,x
+    rep #$20
+    txa
+    clc
+    adc #32
+    tax
+    sep #$20
+    cpx #288
     bne -
     rep #$20
+    ; Slots0..71 use eighteen high-table bytes. Reset both size and ninth-X
+    ; bits once per scene rebuild, instead of masking every small billboard.
+    lda #0
+    sta.l oamMemory+512
+    sta.l oamMemory+514
+    sta.l oamMemory+516
+    sta.l oamMemory+518
+    sta.l oamMemory+520
+    sta.l oamMemory+522
+    sta.l oamMemory+524
+    sta.l oamMemory+526
+    sta.l oamMemory+528
     rtl
  ; Fixed 32x48 hero: six 16x16 OBJ cells, palette 5, priority 2.
 ; One call writes twelve pairs rather than invoking the generic writer six

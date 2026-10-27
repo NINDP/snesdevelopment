@@ -133,7 +133,7 @@ class Emulator:
         self.gun={key}; self.run(12); self.gun=set(); self.run(12)
 
     def state(self):
-        raw=C.string_at(self.memory+self.game_addr,60)
+        raw=C.string_at(self.memory+self.game_addr,148)
         keys=('mode','room','dialogue','page','option','choice','lamp','direction','oil','fear','forest_step','chapel_step','rune_mask','evidence','ending','revealed','return_mode','journal_page','checkpoint_room','notice','pulse','enemy_active','charge0','charge1','charge2','last_hotspot')
         result=dict(zip(keys,raw[:26]))
         for i,key in enumerate(('flags','tick','seconds','interactions','x','y','destination_x','destination_y','enemy_x','enemy_y')):
@@ -141,6 +141,19 @@ class Emulator:
         result.update(zip(("memories","echo_charge","wards","bell_step","ward_timer"),raw[46:51]))
         result['day_seconds'],result['day_number']=struct.unpack_from('<HH',raw,52)
         result.update(zip(('sun_level','time_phase','time_notice'),raw[56:59]))
+        result['nights'],result['kills']=struct.unpack_from('<HH',raw,60)
+        result.update(zip(('bow_mode','bow_draw','bow_cooldown','bow_direction',
+                           'ammo','shot_request','combat_notice','combat_notice_ticks'),raw[64:72]))
+        result['aim_x'],result['aim_y']=struct.unpack_from('<hh',raw,72)
+        result['enemies']=[]
+        for index in range(4):
+            values=struct.unpack_from('<hhBBBBHBB',raw,76+index*12)
+            result['enemies'].append(dict(zip(('x','y','hp','hit','kind','attack',
+                                               'respawn','step','reserved'),values)))
+        result['arrows']=[]
+        for index in range(3):
+            values=struct.unpack_from('<hhbbBB',raw,124+index*8)
+            result['arrows'].append(dict(zip(('x','y','dx','dy','life','damage'),values)))
         return result
 
     def wait_state(self,predicate,label,limit=120):

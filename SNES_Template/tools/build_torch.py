@@ -21,6 +21,8 @@ FACING = ('back', 'right', 'front', 'left')
 GRIPS = TORCH_GRIPS
 # Stem grips are at(8,26), flame cores at(8,9) inside each16x32 sprite.
 FLAMES = FLAME_CENTERS
+PLANTED_GRIP = (106, 162)
+PLANTED_FLAME = (106, 145)
 BAYER = ((0, 8, 2, 10), (12, 4, 14, 6), (3, 11, 1, 9), (15, 7, 13, 5))
 DRIFT = (0, 0, 1, 1, 2, 1, 0, -1, -2, -1, 0, 1, 2, 2, 1, 0,
          -1, -2, -3, -2, -1, 0, 1, 2, 3, 2, 1, 0, -1, -1, 0, 1)
@@ -120,9 +122,9 @@ def planar(tile):
     return bytes(result)
 
 
-def oam_frame(facing,tick):
-    gx,gy=GRIPS[facing]
-    fx,fy=FLAMES[facing]
+def oam_frame(facing,tick,planted=False):
+    gx,gy=PLANTED_GRIP if planted else GRIPS[facing]
+    fx,fy=PLANTED_FLAME if planted else FLAMES[facing]
     phase=(tick>>2)&7
     halo_tile=160+(4 if (phase&2) else 0)
     result=bytearray((fx-16,fy-16,halo_tile,0x1c,
@@ -161,12 +163,16 @@ def build(out,assembly):
     oam=b''.join(oam_frame(face,tick) for face in range(4) for tick in range(32))
     assert len(oam)==4096
     (out/'torch-oam.bin').write_bytes(oam)
+    planted=b''.join(oam_frame(0,tick,True) for tick in range(32))
+    assert len(planted)==1024
+    (out/'torch-planted-oam.bin').write_bytes(planted)
     assembly+=['.section "torch_tiles" superfree','torch_tiles:',
                '.incbin "assets/generated/torch.chr"','.ends','',
                '.section "torch_palette" superfree','torch_palette:',
                '.incbin "assets/generated/torch.pal"','.ends','',
                '.section "torch_oam" superfree','torch_oam_frames:',
-               '.incbin "assets/generated/torch-oam.bin"','.ends','']
+               '.incbin "assets/generated/torch-oam.bin"','torch_planted_oam_frames:',
+               '.incbin "assets/generated/torch-planted-oam.bin"','.ends','']
     atlas.save(out/'torch-atlas.png',transparency=0)
     # Readable animation preview, in indexed colors and exact integer pixels.
     frames=[]
@@ -178,7 +184,7 @@ def build(out,assembly):
         frames.append(view.resize((144,144),Image.Resampling.NEAREST))
     frames[0].save(out/'torch-flame.gif',save_all=True,append_images=frames[1:],
                    duration=80,loop=0,transparency=0,disposal=2)
-    print('torch 8 flames, 2 dither halos, 5 ember trails; 4096 OBJ + 4096 ROM OAM bytes')
+    print('torch 8 flames, 2 dither halos, 5 ember trails; 4096 OBJ + 5120 ROM OAM bytes')
 
 
 if __name__=='__main__':

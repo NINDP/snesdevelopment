@@ -8,6 +8,7 @@ extern u8 perspective0_palette, perspective1_palette, perspective2_palette, pers
 extern u8 perspective_scale, sprite_palette;
 extern u8 daylight0_palettes, daylight1_palettes, daylight_actor_palettes;
 extern u8 perspective_sky_brightness;
+extern u8 bow_tiles, sprite_tiles;
 #define TORCH_PHASE(n) \
     extern u8 perspective_light##n; \
     extern u8 perspective_glow##n##_224, perspective_glow##n##_128, perspective_glow##n##_88; \
@@ -20,20 +21,23 @@ TORCH_PHASE(3)
 TORCH_PHASE(4) TORCH_PHASE(5) TORCH_PHASE(6) TORCH_PHASE(7)
 TORCH_PHASE(8) TORCH_PHASE(9) TORCH_PHASE(10) TORCH_PHASE(11)
 TORCH_PHASE(12) TORCH_PHASE(13) TORCH_PHASE(14) TORCH_PHASE(15)
+TORCH_PHASE(16) TORCH_PHASE(17) TORCH_PHASE(18) TORCH_PHASE(19)
 #define GLOW_PHASE(n) &perspective_glow##n##_224, &perspective_glow##n##_128, \
     &perspective_glow##n##_88, &perspective_glow##n##_64, \
     &perspective_glow##n##_16, &perspective_glow##n##_48, &perspective_glow##n##_200
-static u8 *const light_tables[16] = {
+static u8 *const light_tables[20] = {
     &perspective_light0, &perspective_light1, &perspective_light2, &perspective_light3,
     &perspective_light4, &perspective_light5, &perspective_light6, &perspective_light7,
     &perspective_light8, &perspective_light9, &perspective_light10, &perspective_light11,
-    &perspective_light12, &perspective_light13, &perspective_light14, &perspective_light15};
+    &perspective_light12, &perspective_light13, &perspective_light14, &perspective_light15,
+    &perspective_light16, &perspective_light17, &perspective_light18, &perspective_light19};
 /* Flat arrays stay in ROM with 816-tcc, instead of initialized WRAM. */
-static u8 *const glow_tables[112] = {
+static u8 *const glow_tables[140] = {
     GLOW_PHASE(0), GLOW_PHASE(1), GLOW_PHASE(2), GLOW_PHASE(3),
     GLOW_PHASE(4), GLOW_PHASE(5), GLOW_PHASE(6), GLOW_PHASE(7),
     GLOW_PHASE(8), GLOW_PHASE(9), GLOW_PHASE(10), GLOW_PHASE(11),
-    GLOW_PHASE(12), GLOW_PHASE(13), GLOW_PHASE(14), GLOW_PHASE(15)};
+    GLOW_PHASE(12), GLOW_PHASE(13), GLOW_PHASE(14), GLOW_PHASE(15),
+    GLOW_PHASE(16), GLOW_PHASE(17), GLOW_PHASE(18), GLOW_PHASE(19)};
 static dmaMemory scale_source, light_source, layers_source, mode_source, glow_source;
 static SkU8 mode_table[2][7], layer_table[2][9];
 static SkU8 active_overlay = 0, pending_overlay = 0;
@@ -42,9 +46,13 @@ static SkU8 sky, old_sky = 255, previous_sky = 255, palette_sky = 255;
 static u8 *sky_palettes;
 static SkU16 camera_world_x, camera_world_y;
 static SkU8 lit, force_objects = 1, previous_facing = 255;
-static SkS16 previous_x = -1, previous_y = -1, previous_enemy_x = -1, previous_enemy_y = -1;
+static SkS16 previous_x = -1, previous_y = -1;
 static SkS16 cull_left, cull_right;
-static SkU8 previous_enemy_active = 255;
+static SkS16 enemy_x_cache[COMBAT_ENEMIES], enemy_y_cache[COMBAT_ENEMIES];
+static SkU8 enemy_state_cache[COMBAT_ENEMIES];
+static SkU16 arrow_tiles[COMBAT_ARROWS];
+static SkU8 arrow_life_cache[COMBAT_ARROWS], marker_visible = 0;
+static SkU8 combat_visible = 0;
 static SkU8 slots, moving;
 /* Fixed 16-bit ABI for the short 65C816 OAM writers. */
 void perspective_obj(SkU16 slot, SkS16 x, SkS16 y, SkU16 tile, SkU16 large);
@@ -53,6 +61,89 @@ void perspective_clear(void);
 static void player(void) {
     hero_draw(slots);
     slots += 6;
+}
+static void combat_draw(const Game *g, SkU8 force) {
+    const Enemy *enemy;
+    const Arrow *arrow;
+    SkU8 i, slot, state, direction, angle;
+    SkS16 sx, sy;
+    SkU16 tile;
+    if (!g->enemy_active && !g->bow_mode &&
+        !g->arrows[0].life && !g->arrows[1].life && !g->arrows[2].life &&
+        !g->enemies[0].hit && !g->enemies[1].hit && !g->enemies[2].hit && !g->enemies[3].hit) {
+        /* Daytime exploration needs no actor traversal. Run the loop once
+           when the last combat sprite disappears to clear its cached slot. */
+        if (!combat_visible)
+            return;
+        combat_visible = 0;
+    } else
+        combat_visible = 1;
+    enemy = g->enemies;
+    for (i = 0; i < COMBAT_ENEMIES; ++i, ++enemy) {
+        state = enemy->hp ? enemy->kind + 1 : (enemy->hit ? 3 : 0);
+        if (enemy->hit && (g->tick & 2))
+            state = 0;
+        /* A scenery rebuild has already hidden every combat slot. Never
+           spend twelve generic OAM calls rewriting hidden daytime actors. */
+        if (!state) {
+            if (!force && enemy_state_cache[i]) {
+                slot = i ? 58 + (i << 1) : 50;
+                obj(slot, 0, 240, 0, 0);
+                obj(slot + 1, 0, 240, 0, 0);
+            }
+            enemy_state_cache[i] = 0;
+            continue;
+        }
+        if (!force && state == enemy_state_cache[i] && enemy->x == enemy_x_cache[i] &&
+            enemy->y == enemy_y_cache[i])
+            continue;
+        enemy_x_cache[i] = enemy->x;
+        enemy_y_cache[i] = enemy->y;
+        enemy_state_cache[i] = state;
+        /* Keep the original shade slots for old captures and give new actors
+           independent fixed slots so movement never rebuilds the scenery. */
+        slot = i ? 58 + (i << 1) : 50;
+        if (!perspective_project(g, enemy->x, enemy->y, &sx, &sy)) {
+            obj(slot, 0, 240, 0, 0);
+            obj(slot + 1, 0, 240, 0, 0);
+        } else if (state == 1) {
+            obj(slot, sx - 8, sy - 32, 266, 0);
+            obj(slot + 1, sx - 8, sy - 16, 298, 0);
+        } else {
+            tile = state == 2 ? 482 : (BOW_IMPACT_TILE | 0x0200);
+            obj(slot, sx - 8, sy - 16, tile, 0);
+            obj(slot + 1, 0, 240, 0, 0);
+        }
+    }
+    arrow = g->arrows;
+    for (i = 0; i < COMBAT_ARROWS; ++i, ++arrow) {
+        if (arrow->life && arrow->damage && (arrow->life > arrow_life_cache[i] || !arrow_life_cache[i])) {
+            direction = combat_direction(arrow->dx, arrow->dy);
+            angle = direction <= 4 ? direction : (direction <= 8 ? 8 - direction :
+                    (direction <= 12 ? direction - 8 : 16 - direction));
+            tile = (BOW_ARROW_TILE + (angle << 1)) | 0x0200;
+            if (direction > 8)
+                tile |= 0x4000;
+            if (direction > 4 && direction < 12)
+                tile |= 0x8000;
+            arrow_tiles[i] = tile;
+        }
+        if (arrow->life && perspective_project(g, arrow->x >> 2, arrow->y >> 2, &sx, &sy)) {
+            tile = arrow->damage ? arrow_tiles[i] :
+                   ((BOW_IMPACT_TILE + (arrow->life < 4 ? 2 : 0)) | 0x0200);
+            obj(68 + i, sx - 8, sy - 30, tile, 0);
+        } else if (!force && arrow_life_cache[i])
+            obj(68 + i, 0, 240, 0, 0);
+        arrow_life_cache[i] = arrow->life;
+    }
+    if (g->bow_mode && perspective_project(g, g->aim_x, g->aim_y, &sx, &sy)) {
+        obj(71, sx - 8, sy - 26, BOW_MARKER_TILE | 0x0200, 0);
+        marker_visible = 1;
+    } else if (force || marker_visible) {
+        if (!force)
+            obj(71, 0, 240, 0, 0);
+        marker_visible = 0;
+    }
 }
 void perspective_enter(SkU8 room) {
     u8 *source, *palette;
@@ -74,6 +165,7 @@ void perspective_enter(SkU8 room) {
     dmaCopyCGram(&sprite_palette, 192, 32);
     hero_enter();
     torch_enter();
+    dmaCopyVram(&bow_tiles, VIDEO_OBJ_TILES + 1024, BOW_TILE_BYTES);
     setMode7(0x80);
     REG_M7B = 0; REG_M7B = 0;
     REG_M7C = 0; REG_M7C = 0;
@@ -109,8 +201,10 @@ void perspective_enter(SkU8 room) {
 void perspective_leave(void) {
     setScreenOff();
     REG_HDMAEN = 0;
+    perspective_clear();
     hero_leave();
     torch_leave();
+    dmaCopyVram(&sprite_tiles + 2048, VIDEO_OBJ_TILES + 1024, BOW_TILE_BYTES);
     REG_TMW = 0;
     REG_TSW = 0;
     REG_W12SEL = 0;
@@ -133,7 +227,7 @@ void perspective_draw(const Game *g) {
     camera_world_y = PERSPECTIVE_ORIGIN + g->y;
     lit = g->lamp && g->oil;
     sky = game_daylight(g);
-    phase = ((g->direction & 6) << 1) | ((g->tick >> 3) & 3);
+    phase = (g->bow_mode ? 16 : ((g->direction & 6) << 1)) | ((g->tick >> 3) & 3);
     moving = previous_x != g->x || previous_y != g->y;
     hero_prepare(g, moving);
     objects_changed = force_objects || moving || (phase >> 2) != previous_facing || sky != previous_sky;
@@ -144,7 +238,7 @@ void perspective_draw(const Game *g) {
         object = perspective_objects[g->room];
         player_y = g->y;
         if ((phase >> 2) != previous_facing || sky != previous_sky) {
-            cull_left = sky ? -32 : perspective_light_x[phase >> 2] - 96;
+            cull_left = sky ? -32 : (g->bow_mode ? TORCH_PLANTED_X : perspective_light_x[phase >> 2]) - 96;
             cull_right = sky ? 287 : cull_left + 192;
         }
         for (i = 0; i < count; ++i, ++object) {
@@ -190,21 +284,10 @@ void perspective_draw(const Game *g) {
         previous_sky = sky;
         force_objects = 0;
     }
-    /* The enemy already draws behind scenery. Fixed slots keep its movement
-       from rebuilding every stationary tree, house and villager. */
-    if (objects_changed || g->enemy_x != previous_enemy_x || g->enemy_y != previous_enemy_y ||
-        g->enemy_active != previous_enemy_active) {
-        if (g->enemy_active && perspective_project(g, g->enemy_x, g->enemy_y, &sx, &sy)) {
-            obj(50, sx - 8, sy - 32, 266, 0);
-            obj(51, sx - 8, sy - 16, 298, 0);
-        } else {
-            obj(50, 0, 240, 0, 0);
-            obj(51, 0, 240, 0, 0);
-        }
-        previous_enemy_x = g->enemy_x;
-        previous_enemy_y = g->enemy_y;
-        previous_enemy_active = g->enemy_active;
-    }
+    /* Avoid even the combat function's stack frame and cold actor probes on
+       a sunlit walk. Existing arrows and fading enemies keep it scheduled. */
+    if (g->enemy_active || g->bow_mode || combat_visible)
+        combat_draw(g, objects_changed);
     torch_draw(g);
 }
 void perspective_overlay(SkU8 cut) {
@@ -262,7 +345,7 @@ void perspective_commit(void) {
     REG_CGWSEL = sky && !lit ? 0 : 0x20;
     REG_CGADSUB = sky ? 0x91 : 0xd1;
     if (sky) {
-        shade = (16 - sky) << 1;
+        shade = 16 - sky;
         REG_COLDATA = 0x20 | shade;
         REG_COLDATA = 0x40 | shade;
         REG_COLDATA = 0x80 | shade;

@@ -3,6 +3,9 @@
 #include "game.h"
 #define TORCH_TILE_BYTES 4096
 #define TORCH_OAM_BYTES 4096
+#define TORCH_PLANTED_OAM_BYTES 1024
+#define TORCH_PLANTED_X 106
+#define TORCH_PLANTED_Y 145
 /* Mode7 only, under forced blank on enter/leave. Owns OBJ96..223, slots52..59. */
 void torch_enter(void);
 void torch_leave(void);

@@ -35,7 +35,7 @@ class LinkFailureTests(unittest.TestCase):
         fake = self.root / 'fake-linker'
         fake.write_text('#!/usr/bin/env python3\nimport sys\nfrom pathlib import Path\nPath(sys.argv[-1]).write_bytes(b"bad ROM")\n')
         fake.chmod(0o755)
-        with self.assertRaisesRegex(ValueError, '512 KiB'):
+        with self.assertRaisesRegex(ValueError, '1 MiB'):
             link_rom.link(fake, self.sdk, self.output, [self.obj])
         self.assertEqual(self.output.read_bytes(), b'previous verified ROM')
 

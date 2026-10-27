@@ -7,7 +7,7 @@ ROOT=Path(__file__).resolve().parents[1]
 def main():
     dist=ROOT/'dist';dist.mkdir(exist_ok=True)
     rom=(ROOT/'chernorechye.sfc').read_bytes()
-    assert len(rom)==524288
+    assert len(rom)==1048576
     complement,checksum=struct.unpack_from('<HH',rom,0x7fdc)
     assert complement^checksum==0xffff
     assert sum(rom)&0xffff==checksum
@@ -21,7 +21,7 @@ def main():
     if actual!=expected or len(records)!=8: raise ValueError('Eight distinct ROM checks are required')
     if any(r.get('rom_sha256')!=hashlib.sha256(rom).hexdigest() for r in records):
         raise ValueError('Reports belong to another ROM build; run checks again')
-    for feature in ('scope','hero','torch'):
+    for feature in ('scope','hero','torch','daycycle','combat','survival'):
         for region in ('ntsc','pal'):
             report=json.loads((ROOT/'build'/('%s-regression-%s.json'%(feature,region))).read_text())
             if report.get('rom_sha256')!=hashlib.sha256(rom).hexdigest():
@@ -31,10 +31,10 @@ def main():
         if report.get('rom_sha256')!=hashlib.sha256(rom).hexdigest():
             raise ValueError('Cadence profile belongs to another ROM: '+suffix)
         if len(report['cadence'])!=7 or any(r['updates']!=600 or r['max_vblank_gap']!=1
-                or r['audio_peak']<=0 for r in report['cadence']):
+                or (r.get('heartbeat_expected',True) and r['audio_peak']<=0) for r in report['cadence']):
             raise ValueError('Cadence/audio regression failed: '+suffix)
     lines=['# Проверка финальной сборки','',
-        'PVSnesLib 4.6.0; Linux x86-64; 512 KiB LoROM.',
+        'PVSnesLib 4.6.0; Linux x86-64; 1 MiB LoROM.',
         'Mode 7: тайловые материалы четырёх локаций и круговой свет факела.',
         'SHA-256: `'+hashlib.sha256(rom).hexdigest()+'`.','',
         'Тесты ядра и ASan/UBSan проходят. Настоящая ROM проверена',
@@ -43,8 +43,9 @@ def main():
         '|---|---|---|---:|---:|']
     for r in records:
         lines.append('| %s | %s | %s | %s | %s |'%(r['region'],r['controller'],r['requested_ending'],r['frames'],r['audio_peak']))
-    lines+=['','На кадрах всех четырёх локаций проверена полная темнота за пределами',
+    lines+=['','Ночью и в закрытых помещениях проверена полная темнота за пределами',
         'круга света: земля, персонажи и предметы не просвечивают.',
+        'Днём на улице солнце освещает мир даже с выключенным факелом.',
         'Проверены выключение/включение факела, журнал в темноте и возврат',
         'в исследование; интерфейс не раскрывает скрытый мир.',
         'Проверены также прогресс сцен, порядок знаков, узлы, моральные условия, концовки,',
@@ -52,7 +53,17 @@ def main():
         'Расширенная секретная ветка проверяет три следа памяти, колокольную',
         'загадку и расход серебра; native tests также проверяют обратные пути.',
         'JSON-отчёты и кадры приложены в build/.',
-        'Дополнительно прошли шесть регрессий героя, факела и Scope в PAL/NTSC.',
+        'Дополнительно прошли двенадцать регрессий героя, факела, Scope, суток, боя и выживания в PAL/NTSC.',
+        'Лук проверен натяжением и отпусканием A, обычным кликом Scope,',
+        'физическим полётом стрелы, попаданием в тело и гибелью врага.',
+        'Проверены препятствия, отсутствие урона NPC, конечный боезапас,',
+        'пополнение у сосудов, отмена невалидного выстрела и остановка боя в UI.',
+        'Проверены четыре последовательные ночи с ростом группы до четырёх врагов.',
+        'Ползуны пробираются через огонь; серебро не лечит раненных противников.',
+        'Каждый регион прошёл полный цикл 768 активных секунд: сумерки, ночь,',
+        'полночь со сменой дня, рассвет и возвращение дневного света.',
+        'Проверены убывание света на закате, часы в журнале, остановка времени',
+        'в журнале и на паузе, отступление лесной тени и тёмная часовня днём.',
         'Проверены 24 фазы ходьбы, восемь поз ожидания, поворот на месте и VRAM на паузе.',
         'На четырёх направлениях проверено совпадение факела с кистью и 32 состояния искр.',
         'При выходе в меню проверено восстановление старых спрайтов вступления.',
@@ -60,22 +71,24 @@ def main():
         'и отбрасывание невалидного FIRE проходят регрессии.',
         'Декоративные деревья больше не перехватывают клики по земле.',
         'Семь сценариев в каждом регионе дают 600 обновлений на 600 кадров;',
-        'в каждой фазе отдельно проверен ненулевой звук SPC.',
+        'в тёмных фазах отдельно проверен ненулевой звук SPC.',
         'Вступление из пяти экранов проверено кнопками; кадры спортзала,',
         'подвала и отражения сняты из самой ROM.',
         'Свет следует за огнём в левой руке, имеет яркий центр, тёплое кольцо',
         'и четыре фазы мерцания на направление;',
-        'внешний радиус — 77..79 экранных пикселей. За кругом нет тусклого слоя.',
+        'внешний радиус — 77..79 экранных пикселей. Ночью за кругом нет тусклого слоя.',
         'Материалы Mode 7 укладываются в 184 / 252 / 39 / 37 тайлов из 256.','',
         'Физическая SNES, настоящий Super Scope/CRT, macOS и пользовательская',
         'длительность прохождения не проверены. Это прототип с',
-        'новой графикой и тремя эффектами, без озвучки, полной музыки и SRAM.']
+        'новой графикой и шестью эффектами, без озвучки, полной музыки и SRAM.']
     memory=json.loads((ROOT/'build/memory.json').read_text())
     lines+=['', 'Статика платформы/ядра: %d B; initialized content: %d B.'%
             (memory['project_static_bytes'],memory['initialized_content_bytes']),
-        'Всего проектной WRAM: %d B без SDK/стека/APU; Game: 52 B.'%memory['total_project_wram_bytes'],
+        'Всего проектной WRAM: %d B без SDK/стека/APU; Game: 148 B.'%memory['total_project_wram_bytes'],
         'Текстовый буфер: 1792 B; старые Mode 1 HDMA-буферы: 532 B.',
         'Таблицы света Mode 7 в ROM: %d B.'%memory['torch_table_bytes'],
+        'Палитры суток и готовые уведомления в ROM: %d B.'%memory['daycycle_rom_bytes'],
+        'Боевые позы: 16384 B ROM; атлас стрел: 1024 B; панели лука: 9600 B.',
         'Профили PAL/NTSC приложены в build/profile-*.json.']
     proof=ROOT/'build/reproducibility.json'
     if proof.is_file():
@@ -110,7 +123,7 @@ def main():
             if p.suffix in {'.obj','.ps','.symfull','.log','.dbg'}:continue
             if rel.as_posix() in {'hdr.asm','linkfile','chernorechye.sfc','chernorechye.sym'}:continue
             if '__pycache__' in rel.parts:continue
-            if rel.parts[0]=='build' and p.suffix not in {'.png','.json'}:continue
+            if rel.parts[0]=='build' and p.suffix not in {'.png','.json','.gif'}:continue
             if p.suffix=='.asm' and rel.as_posix() not in {
                     'Data/content/assets.asm','Data/content/audio.asm','Data/perspective_oam.asm'}:continue
             z.write(p,'SNES_Template/'+rel.as_posix())

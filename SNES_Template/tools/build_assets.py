@@ -458,7 +458,17 @@ def main():
     ambient=struct.pack('<16H',*[max(0,r//32)+(max(0,g//32))*32+(max(0,b//24))*1024
                                  for r,g,b in PALETTE])
     (OUT/'ambient.pal').write_bytes(ambient)
-    sheet=atlas(); tiles,_=tile_image(sheet,False)
+    sheet=atlas()
+    # Bow OBJ64..95 displaces the silver token; keep it in an unused cell.
+    sheet.paste(sheet.crop((0,32,16,48)),(0,240))
+    crawler=ImageDraw.Draw(sheet)
+    crawler.ellipse((18,247,29,253),fill=1,outline=2)
+    crawler.polygon(((20,248),(23,244),(27,245),(30,249),(26,251)),fill=2)
+    for x in (19,23,27):
+        crawler.line((x,250,x-2,253,x-1,254),fill=3)
+        crawler.line((x,248,x+2,245),fill=3)
+    crawler.point((27,247),fill=11);crawler.point((29,248),fill=11)
+    tiles,_=tile_image(sheet,False)
     (OUT/'sprites.chr').write_bytes(tiles); sheet.convert('RGB').save(OUT/'sprites.png')
     torch=sheet.crop((0,80,128,96))
     rgba=torch.convert('RGBA')
@@ -468,6 +478,8 @@ def main():
     rgba.save(OUT/'torch-sheet.png')
     from build_hero import build as build_hero
     build_hero(OUT,assembly)
+    from build_bow import build as build_bow
+    build_bow(OUT,assembly)
     from build_daycycle import build as build_daycycle
     build_daycycle(OUT,assembly)
     from build_torch import build as build_torch

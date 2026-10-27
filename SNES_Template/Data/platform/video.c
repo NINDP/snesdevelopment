@@ -15,6 +15,8 @@ extern u8 cine0_tiles, cine0_tiles_end, cine0_map, cine0_palette;
 extern u8 cine1_tiles, cine1_tiles_end, cine1_map, cine1_palette;
 extern u8 cine2_tiles, cine2_tiles_end, cine2_map, cine2_palette;
 extern u8 sprite_tiles, sprite_tiles_end, sprite_palette, bg_palette, font_tiles, font_tiles_end;
+extern u8 daycycle_notices;
+extern u8 bow_hud_maps;
 /* UI buckets live in ROM, avoiding 65C816 software division per draw. */
 static const SkU8 bucket5[121] = {
     0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  2,  2,  2,  2,  2,  3,  3,  3,  3,  3,  4,
@@ -36,6 +38,7 @@ static SkU16 camera_x = 0;
 static SkU8 calibration_stage = 255;
 static SkS16 calibration_x = -1, calibration_y = -1;
 static SkU8 time_banner = 255;
+static SkU8 banner_dirty = 0;
 static void ui_tile(SkU8 x, SkU8 y, SkU16 tile) {
     text_map[(SkU16)y * 32 + x] = tile | (7 << 10) | BG_TIL_PRIO;
 }
@@ -246,8 +249,12 @@ void video_init(void) {
 }
 void video_commit(void) {
     if (dirty) {
-        dmaCopyVram((u8 *)text_map, VIDEO_TEXT_MAP, sizeof(text_map));
+        if (banner_dirty)
+            dmaCopyVram((u8 *)text_map + 25 * 64, VIDEO_TEXT_MAP + 25 * 32, 3 * 64);
+        else
+            dmaCopyVram((u8 *)text_map, VIDEO_TEXT_MAP, sizeof(text_map));
         dirty = 0;
+        banner_dirty = 0;
     }
     if (current_bg >= 10 && current_bg <= 13) {
         perspective_commit();
@@ -381,18 +388,24 @@ void video_draw(const Game *g, SkU8 scope) {
             time_banner = 255;
         }
         perspective_draw(g);
-        i = g->time_notice ? g->time_phase : 254;
+        i = g->time_notice ? g->time_phase :
+            (g->bow_mode ? 32 + g->ammo + (scope ? 25 : 0) : 254);
         if (i != time_banner) {
+            banner_dirty = !dirty && time_banner != 255;
+            /* Only entry from a full-screen menu needs a full clear. Live
+               phase changes copy three prebuilt rows to fit the frame. */
+            if (time_banner == 255)
+                memset(text_map, 0, sizeof(text_map));
+            else if (i == 254)
+                memset(text_map + 25 * 32, 0, 3 * 64);
             time_banner = i;
-            redraw = 1;
-            memset(text_map, 0, sizeof(text_map));
             dirty = 1;
-            if (g->time_notice) {
-                panel(25, 3);
-                text(2, 26, game_time_event(g));
-            }
+            if (g->time_notice)
+                memcpy(text_map + 25 * 32, &daycycle_notices + (SkU16)g->time_phase * 192, 3 * 64);
+            else if (g->bow_mode)
+                memcpy(text_map + 25 * 32, &bow_hud_maps + (SkU16)(i - 32) * 192, 3 * 64);
         }
-        perspective_overlay(g->time_notice ? 200 : 224);
+        perspective_overlay(g->time_notice || g->bow_mode ? 200 : 224);
         return;
     }
     time_banner = 255;
@@ -582,6 +595,12 @@ void video_draw(const Game *g, SkU8 scope) {
         text(1, 6, TXT_GOAL);
         text(1, 8, game_goal(g));
         text(1, 12, game_journal(g));
+        text(1, 16, TXT_NIGHTS);
+        number(7, 16, g->nights);
+        text(12, 16, TXT_ARROWS);
+        number(19, 16, g->ammo);
+        text(23, 16, TXT_KILLS);
+        number(29, 16, g->kills);
         text(1, 18, TXT_MEMORIES);
         number(12, 18,
                (g->memories & 1 ? 1 : 0) + (g->memories & 2 ? 1 : 0) + (g->memories & 4 ? 1 : 0));

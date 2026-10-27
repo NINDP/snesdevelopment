@@ -62,7 +62,9 @@ static SkInput read_input(void) {
             in.pressed |= SK_PAUSE;
     }
     if (game.mode == G_EXPLORE && in.scope && in.aim_valid) {
-        in.aim_valid = perspective_pick_target(&game, in.x, in.y, &in.x, &in.y);
+        if (!game.bow_mode || !combat_pick(&game, in.x, in.y, &in.x, &in.y))
+            in.aim_valid = game.bow_mode ? perspective_pick(&game, in.x, in.y, &in.x, &in.y)
+                                       : perspective_pick_target(&game, in.x, in.y, &in.x, &in.y);
     }
     if ((edge & KEY_SELECT) && packet.connected) {
         calibration = 1;

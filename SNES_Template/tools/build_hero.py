@@ -119,7 +119,7 @@ def face_side(d, bob, left=False):
     return im
 
 
-def actor(facing, frame):
+def actor(facing, frame, with_hands=True):
     im = canvas()
     d = ImageDraw.Draw(im)
     walking = frame >= 2
@@ -187,44 +187,45 @@ def actor(facing, frame):
                (bag_x+6, 34+bob), (bag_x+3, 36+bob), (bag_x-1, 34+bob)], fill=3, outline=1)
     d.line((bag_x, 29+bob, bag_x+4, 29+bob), fill=4)
     d.point((bag_x+3, 31+bob), fill=15)
-    # Hold the same anatomical left hand in all four views. The wrist is a
-    # fixed attachment point; shoulders/elbows absorb breathing and gait.
-    torch_on_right = facing in ('front', 'right')
-    if torch_on_right:
-        free_x = 7 + (swing//2 if walking else 0)
-        d.polygon([(9, 19+bob), (11, 21+bob), (free_x+3, 27+bob),
-                   (free_x+3, 30+bob), (free_x, 30+bob),
-                   (free_x-1, 25+bob)], fill=9, outline=1)
-        d.line((8, 21+bob, free_x, 26+bob), fill=11)
-        d.rectangle((free_x, 29+bob, free_x+2, 32+bob), fill=13)
-        d.point((free_x, 29+bob), fill=14)
-    else:
-        free_x = 23 - (swing//2 if walking else 0)
-        d.polygon([(21, 19+bob), (24, 20+bob), (free_x+3, 25+bob),
-                   (free_x+3, 31+bob), (free_x, 32+bob),
-                   (free_x-1, 26+bob)], fill=9, outline=1)
-        d.line((23, 21+bob, free_x+2, 27+bob), fill=10)
-        d.rectangle((free_x, 30+bob, free_x+2, 33+bob), fill=13)
-        d.point((free_x+2, 30+bob), fill=14)
-    grip = LEFT_GRIPS[facing]
-    hx, hy = grip
-    if torch_on_right:
-        d.polygon([(21, 18+bob), (24, 20+bob), (hx+1, hy-5),
-                   (hx+2, hy-1), (hx, hy+1), (hx-3, hy-1),
-                   (21, 23+bob)], fill=9, outline=1)
-        d.line((23, 20+bob, hx, hy-3), fill=11)
-        d.line((hx-2, hy-2, hx+1, hy-2), fill=4)
-    else:
-        d.polygon([(10, 18+bob), (12, 21+bob), (hx+3, hy-3),
-                   (hx+2, hy), (hx-1, hy+1), (hx-2, hy-2),
-                   (8, 21+bob)], fill=9, outline=1)
-        d.line((9, 20+bob, hx-1, hy-3), fill=11)
-        d.line((hx-1, hy-2, hx+2, hy-2), fill=4)
-    # These three pixels cover the shaft: the fingers wrap over the wood,
-    # while the torch's upper and lower sections meet at the same coordinate.
-    d.rectangle((hx-1, hy-1, hx+1, hy+1), fill=13)
-    d.line((hx-1, hy-1, hx+1, hy-1), fill=14)
-    d.point((hx+1, hy+1), fill=12)
+    if with_hands:
+        # Hold the same anatomical left hand in all four views. The wrist is a
+        # fixed attachment point; shoulders/elbows absorb breathing and gait.
+        torch_on_right = facing in ('front', 'right')
+        if torch_on_right:
+            free_x = 7 + (swing//2 if walking else 0)
+            d.polygon([(9, 19+bob), (11, 21+bob), (free_x+3, 27+bob),
+                       (free_x+3, 30+bob), (free_x, 30+bob),
+                       (free_x-1, 25+bob)], fill=9, outline=1)
+            d.line((8, 21+bob, free_x, 26+bob), fill=11)
+            d.rectangle((free_x, 29+bob, free_x+2, 32+bob), fill=13)
+            d.point((free_x, 29+bob), fill=14)
+        else:
+            free_x = 23 - (swing//2 if walking else 0)
+            d.polygon([(21, 19+bob), (24, 20+bob), (free_x+3, 25+bob),
+                       (free_x+3, 31+bob), (free_x, 32+bob),
+                       (free_x-1, 26+bob)], fill=9, outline=1)
+            d.line((23, 21+bob, free_x+2, 27+bob), fill=10)
+            d.rectangle((free_x, 30+bob, free_x+2, 33+bob), fill=13)
+            d.point((free_x+2, 30+bob), fill=14)
+        grip = LEFT_GRIPS[facing]
+        hx, hy = grip
+        if torch_on_right:
+            d.polygon([(21, 18+bob), (24, 20+bob), (hx+1, hy-5),
+                       (hx+2, hy-1), (hx, hy+1), (hx-3, hy-1),
+                       (21, 23+bob)], fill=9, outline=1)
+            d.line((23, 20+bob, hx, hy-3), fill=11)
+            d.line((hx-2, hy-2, hx+1, hy-2), fill=4)
+        else:
+            d.polygon([(10, 18+bob), (12, 21+bob), (hx+3, hy-3),
+                       (hx+2, hy), (hx-1, hy+1), (hx-2, hy-2),
+                       (8, 21+bob)], fill=9, outline=1)
+            d.line((9, 20+bob, hx-1, hy-3), fill=11)
+            d.line((hx-1, hy-2, hx+2, hy-2), fill=4)
+        # These three pixels cover the shaft: the fingers wrap over the wood,
+        # while the torch's upper and lower sections meet at the same coordinate.
+        d.rectangle((hx-1, hy-1, hx+1, hy+1), fill=13)
+        d.line((hx-1, hy-1, hx+1, hy-1), fill=14)
+        d.point((hx+1, hy+1), fill=12)
     # Neck, collar and head are drawn last for a stable eye line.
     d.rectangle((13, 14+bob, 18, 17+bob), fill=12)
     d.line((13, 17+bob, 15, 18+bob, 18, 17+bob), fill=11)
@@ -259,6 +260,76 @@ def frame_strip(im):
             payload.extend(planar(list(strip.crop((x, y, x+8, y+8)).getdata())))
     assert len(payload) == 1024
     return bytes(payload)
+
+
+def bow_actor(facing, pose):
+    """Two hands, one nock and a flexing bow; the torch is planted separately.
+
+    Poses are ready, half draw, full draw and loose. Clothing, face and feet
+    come from the idle silhouette; the original held-torch arms are omitted.
+    """
+    side = facing in ('right', 'left')
+    # Draw the left profile from the same coherent stance, then mirror the
+    # complete pose so fingers, nock and string stay joined at every stage.
+    im = actor('right' if side else facing, 0, with_hands=False)
+    d = ImageDraw.Draw(im)
+    d.polygon([(5, 18), (9, 17), (11, 29), (9, 34), (6, 32)], fill=3, outline=1)
+    d.line((7, 19, 9, 31), fill=4)
+    for x in (4, 7, 9):
+        d.line((x, 14, x+2, 22), fill=10)
+        d.line((x-1, 14, x+1, 16), fill=15)
+        d.point((x+1, 13), fill=11)
+
+    def arm(points, hand):
+        d.line(points, fill=1, width=5)
+        d.line(points, fill=9, width=3)
+        d.line(points[:-1], fill=11)
+        x, y = hand
+        d.rectangle((x-1, y-1, x+1, y+1), fill=13)
+        d.point((x, y-1), fill=14)
+
+    def wood(points):
+        d.line(points, fill=1, width=3)
+        d.line(points, fill=4, width=2)
+        d.line(points[1:-1], fill=10)
+
+    if side:
+        # Anatomical left hand braces the grip; right draws to the cheek.
+        pull = (22, 18, 14, 23)[pose]
+        wood([(24, 12), (27, 15), (29, 21), (29, 29), (27, 35), (24, 38)])
+        d.line((24, 12, pull, 24, 24, 38), fill=11)
+        if pose != 3:
+            d.line((pull, 24, 31, 24), fill=10)
+            d.polygon([(31, 24), (28, 22), (28, 25)], fill=15)
+            d.line((pull, 24, pull+2, 22), fill=15)
+            d.point((pull+1, 25), fill=11)
+        arm([(20, 20), (24, 24), (28, 25)], (28, 25))
+        elbow = (11, 24) if pose == 2 else (13, 26)
+        arm([(12, 21), elbow, (pull, 24)], (pull, 24))
+        d.line((27, 25, 29, 25), fill=3)
+    elif facing == 'back':
+        pull = (18, 22, 26, 17)[pose]
+        wood([(2, 14), (7, 12), (12, 13), (16, 16), (20, 13), (25, 12), (29, 14)])
+        d.line((2, 14, 16, pull, 29, 14), fill=11)
+        if pose != 3:
+            d.line((16, pull, 16, 8), fill=10)
+            d.polygon([(16, 7), (14, 10), (17, 10)], fill=15)
+            d.line((16, pull, 14, pull-2), fill=15)
+        arm([(10, 21), (12, 19), (16, 17)], (16, 17))
+        arm([(23, 21), (23, 26), (16, pull)], (16, pull))
+    else:
+        pull = (31, 27, 23, 32)[pose]
+        wood([(2, 34), (7, 37), (11, 35), (16, 32), (21, 35), (25, 37), (29, 34)])
+        d.line((2, 34, 16, pull, 29, 34), fill=11)
+        if pose != 3:
+            d.line((16, pull, 16, 41), fill=10)
+            d.polygon([(16, 42), (14, 39), (17, 39)], fill=15)
+            d.line((16, pull, 14, pull+2), fill=15)
+        arm([(22, 21), (23, 27), (16, 32)], (16, 32))
+        arm([(9, 21), (10, 25), (16, pull)], (16, pull))
+    if facing == 'left':
+        im = im.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+    return im
 
 
 def build(out, assembly):
@@ -300,7 +371,28 @@ def build(out, assembly):
         frames.append(view.resize((384,144),Image.Resampling.NEAREST))
     frames[0].save(out/'hero-walk.gif',save_all=True,append_images=frames[1:],
                    duration=100,loop=0,transparency=0,disposal=2)
+    bow_sheet = canvas((128,192))
+    for direction, facing in enumerate(FACING):
+        assembly += ['.section "hero_bow_%s" superfree' % facing]
+        for pose in range(4):
+            im = bow_actor(facing,pose)
+            name = 'bow-hero-%s-%d.chr' % (facing,pose)
+            (out/name).write_bytes(frame_strip(im))
+            assembly += ['hero_bow_frame%d:' % (direction*4+pose),
+                         '.incbin "assets/generated/%s"' % name]
+            bow_sheet.paste(im,(pose*32,direction*48))
+        assembly += ['.ends','']
+    bow_sheet.save(out/'hero-bow-sheet.png',transparency=0)
+    bow_frames=[]
+    for pose in (0,1,2,2,3,0):
+        view=canvas((128,48))
+        for direction in range(4):
+            view.paste(bow_sheet.crop((pose*32,direction*48,pose*32+32,direction*48+48)),(direction*32,0))
+        bow_frames.append(view.resize((512,192),Image.Resampling.NEAREST))
+    bow_frames[0].save(out/'hero-bow.gif',save_all=True,append_images=bow_frames[1:],
+                       duration=120,loop=0,transparency=0,disposal=2)
     print('hero', len(FACING)*8, 'frames, 32768 ROM bytes, 1024 streamed OBJ bytes')
+    print('hero bow',16,'frames, 16384 ROM bytes; original walk frames unchanged')
 
 
 if __name__ == '__main__':

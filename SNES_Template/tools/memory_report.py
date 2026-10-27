@@ -38,7 +38,7 @@ def report():
         entries = re.findall(r'^\s*(\S+) dsb (\d+)\s*$', path.read_text(), re.M)
         allocations[str(path.relative_to(ROOT))] = sum(int(n) for _, n in entries)
         sizes.update({name.split('{WLA_FILENAME}_')[-1]: int(n) for name, n in entries})
-    expected = {'text_map': 1792, 'tables': 266, 'heat_tables': 266, 'game': 60}
+    expected = {'text_map': 1792, 'tables': 266, 'heat_tables': 266, 'game': 148}
     for name, size in expected.items():
         if sizes.get(name) != size:
             raise ValueError('Unexpected buffer/state size: ' + name)
@@ -96,7 +96,7 @@ def report():
         if len(payload) != 673 or payload[-1] != 0 or any(payload[i] != 1 for i in range(0,672,3)):
             raise ValueError('Expected 224 completed Mode 7 scanline records: ' + name)
     light_bytes=0
-    for phase in range(16):
+    for phase in range(20):
         path=assets/('perspective-light%d.hdma'%phase)
         payload=path.read_bytes()
         rows=hdma_rows(payload,4)
@@ -126,15 +126,41 @@ def report():
     hero_addresses=re.findall(r'^([0-9a-fA-F]{8}) hero_frame\d+$',symbols,re.M)
     if len(hero_addresses)!=32 or any((int(addr,16)&0x7fff)>32768-1024 for addr in hero_addresses):
         raise ValueError('Hero frame DMA must not cross a LoROM bank boundary')
+    bow_frames=list(assets.glob('bow-hero-*.chr'))
+    bow_addresses=re.findall(r'^([0-9a-fA-F]{8}) hero_bow_frame\d+$',symbols,re.M)
+    if len(bow_frames)!=16 or any(p.stat().st_size!=1024 for p in bow_frames) or len(bow_addresses)!=16:
+        raise ValueError('Expected sixteen two-handed bow frames')
+    if any((int(addr,16)&0x7fff)>32768-1024 for addr in bow_addresses):
+        raise ValueError('Bow hero frame crosses a LoROM bank')
     for name in ('torch.chr','torch-oam.bin'):
         if (assets/name).stat().st_size!=4096:
             raise ValueError('Expected a bank-contained 4 KiB torch payload: '+name)
     if (assets/'torch.pal').stat().st_size!=32:
         raise ValueError('Torch palette must contain 16 colors')
-    for name in ('torch_tiles','torch_oam_frames'):
+    if (assets/'torch-planted-oam.bin').stat().st_size!=1024:
+        raise ValueError('Expected thirty-two planted torch poses')
+    for name,size in (('torch_tiles',4096),('torch_oam_frames',5120),
+                      ('bow_tiles',1024),('bow_hud_maps',9600)):
         match=re.search(r'^([0-9a-fA-F]{8}) '+name+'$',symbols,re.M)
-        if not match or (int(match[1],16)&0x7fff)>32768-4096:
+        if not match or (int(match[1],16)&0x7fff)>32768-size:
             raise ValueError('Torch DMA/animation data crosses a LoROM bank: '+name)
+    if (assets/'bow.chr').stat().st_size!=1024 or (assets/'bow-hud.map').stat().st_size!=9600:
+        raise ValueError('Unexpected bow atlas/HUD size')
+    daylight_bytes=0
+    for filename,symbol,size in (('daylight0.pal','daylight0_palettes',4352),
+            ('daylight1.pal','daylight1_palettes',4352),
+            ('daylight-actors.pal','daylight_actor_palettes',1088),
+            ('daycycle-notices.map','daycycle_notices',768)):
+        payload=(assets/filename).read_bytes()
+        match=re.search(r'^([0-9a-fA-F]{8}) '+symbol+'$',symbols,re.M)
+        if len(payload)!=size or not match or (int(match[1],16)&0x7fff)>32768-size:
+            raise ValueError('Daylight data must fit one LoROM bank: '+filename)
+        if filename in ('daylight0.pal','daylight1.pal'):
+            for level in range(17):
+                palette=struct.unpack_from('<128H',payload,level*256)
+                if palette[0]!=0 or payload[level*256+58:level*256+64]!=payload[58:64]:
+                    raise ValueError('Daylight changed transparent/UI colors: '+filename)
+        daylight_bytes+=size
     samples = sum(p.stat().st_size for p in assets.glob('*.brr'))
     if samples > 4096:
         raise ValueError('BRR payload exceeds the allocated 4 KiB sample region')
@@ -149,9 +175,12 @@ def report():
               'total_project_wram_limit': 8192,
               'background_bytes': backgrounds, 'cinematic_bytes': cinematics,
               'perspective_bytes': perspective, 'torch_table_bytes': light_bytes,
+              'daycycle_rom_bytes': daylight_bytes,
               'fastrom': True, 'ambient_map_bytes': 2048, 'font_bytes': font,
               'sprite_bytes': sprites, 'hero_frame_bytes': 1024, 'hero_rom_bytes': 32768,
               'torch_obj_bytes': 4096, 'torch_oam_rom_bytes': 4096,
+              'planted_torch_oam_rom_bytes': 1024,
+              'bow_frame_rom_bytes': 16384, 'bow_obj_bytes': 1024, 'bow_hud_rom_bytes': 9600,
               'brr_payload_bytes': samples,
               'vram_actual_peak_bytes': max(max(backgrounds.values()) + 4096,
                                              max(size + (4096 if name == 'cine0.chr' else 2048)

@@ -79,6 +79,22 @@ enum EndingId { END_GOOD, END_BAD, END_SECRET };
 enum TimePhase { TIME_NIGHT, TIME_DAWN, TIME_DAY, TIME_DUSK };
 #define DAY_CYCLE_SECONDS 768
 #define DAY_START_SECONDS 512
+#define COMBAT_ENEMIES 4
+#define COMBAT_ARROWS 3
+#define BOW_AMMO_MAX 24
+#define BOW_DRAW_TICKS 18
+typedef struct {
+    SkS16 x, y;
+    SkU8 hp, hit, kind, attack;
+    SkU16 respawn;
+    SkU8 step, reserved;
+} Enemy;
+typedef struct {
+    /* Quarter-world-unit coordinates; velocity uses the same units. */
+    SkS16 x, y;
+    SkS8 dx, dy;
+    SkU8 life, damage;
+} Arrow;
 typedef struct {
     const char *speaker;
     const char *text;
@@ -99,6 +115,13 @@ typedef struct {
     SkU8 memories, echo_charge, wards, bell_step, ward_timer, text_delay;
     SkU16 day_seconds, day_number;
     SkU8 sun_level, time_phase, time_notice;
+    SkU8 clock_reserved;
+    SkU16 nights, kills;
+    SkU8 bow_mode, bow_draw, bow_cooldown, bow_direction;
+    SkU8 ammo, shot_request, combat_notice, combat_notice_ticks;
+    SkS16 aim_x, aim_y;
+    Enemy enemies[COMBAT_ENEMIES];
+    Arrow arrows[COMBAT_ARROWS];
 } Game;
 #define TORCH_RADIUS 64
 #define CORRIDOR_START 80
@@ -129,4 +152,12 @@ SkU8 game_visible(const Game *g, SkS16 x, SkS16 y);
 const char *game_time_name(const Game *g);
 const char *game_time_event(const Game *g);
 const char *game_time_hint(const Game *g);
+void combat_init(Game *g);
+void combat_enter(Game *g);
+void combat_tick(Game *g, const SkInput *in);
+void combat_ward(Game *g);
+SkU8 combat_capacity(const Game *g);
+SkU8 combat_tier(const Game *g);
+SkU8 combat_direction(SkS16 dx, SkS16 dy);
+SkU8 combat_pick(const Game *g, SkS16 sx, SkS16 sy, SkS16 *x, SkS16 *y);
 #endif

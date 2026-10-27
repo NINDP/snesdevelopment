@@ -30,8 +30,11 @@ void daycycle_second(Game *g) {
         g->time_phase = TIME_DUSK;
         g->sun_level = 16 - ((g->day_seconds - 576) >> 2);
     }
-    if (g->time_phase != previous)
+    if (g->time_phase != previous) {
         g->time_notice = 180;
+        if (g->time_phase == TIME_DUSK && g->nights < 999)
+            ++g->nights;
+    }
 }
 SkU8 game_daylight(const Game *g) {
     /* The chapel's windows are boarded. Neither it nor the crypt has sky. */

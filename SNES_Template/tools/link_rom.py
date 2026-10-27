@@ -36,8 +36,8 @@ def link(linker, library_dir, output, objects):
         if result.returncode:
             raise RuntimeError('Linker failed:\n' + result.stdout[-8000:])
         data = rom.read_bytes()
-        if len(data) != 524288:
-            raise ValueError('Expected 512 KiB LoROM')
+        if len(data) != 1048576 or data[0x7fd7] != 0x0a:
+            raise ValueError('Expected 1 MiB LoROM')
         complement, checksum = struct.unpack_from('<HH', data, 0x7fdc)
         if complement ^ checksum != 65535 or sum(data) & 65535 != checksum:
             raise ValueError('SNES checksum/complement mismatch')
@@ -53,7 +53,7 @@ def link(linker, library_dir, output, objects):
                 'symbols_sha256':hashlib.sha256(text.encode()).hexdigest(),
                 'objects':[str(p) for p in objects], 'sdk_objects':[p.name for p in libraries]}
         (build/'link_manifest.json').write_text(json.dumps(record,indent=2)+'\n')
-    print('Linked 512 KiB LoROM; checksum and object manifest verified')
+    print('Linked 1 MiB LoROM; checksum and object manifest verified')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

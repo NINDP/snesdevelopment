@@ -33,16 +33,19 @@ static void enter_room(Game *g, SkU8 room) {
     g->mode = G_EXPLORE;
     g->notice = 0;
     g->echo_charge = 0;
+    combat_enter(g);
 }
 void game_init(Game *g) {
     memset(g, 0, sizeof(*g));
     daycycle_init(g);
+    combat_init(g);
     g->mode = G_SPLASH;
     g->oil = 120;
 }
 void game_new(Game *g) {
     memset(g, 0, sizeof(*g));
     daycycle_init(g);
+    combat_init(g);
     g->oil = 120;
     enter_room(g, 0);
     begin_dialogue(g, D_PROLOG);
@@ -51,6 +54,7 @@ void game_checkpoint(Game *g) {
     enter_room(g, g->checkpoint_room);
     g->oil = 120;
     g->fear = 15;
+    g->ammo = BOW_AMMO_MAX;
     g->lamp = 1;
     begin_dialogue(g, D_RETRY);
 }
@@ -221,6 +225,7 @@ SkU8 game_nearby(const Game *g) {
 }
 static void refill(Game *g) {
     g->oil = 120;
+    g->ammo = BOW_AMMO_MAX;
     g->notice = 1;
     g->fear = g->fear > 15 ? g->fear - 15 : 0;
 }
@@ -259,6 +264,7 @@ static void silver_ward(Game *g) {
     g->fear = g->fear > 25 ? g->fear - 25 : 0;
     g->enemy_x = 238;
     g->enemy_y = 40;
+    combat_ward(g);
 }
 static void interact(Game *g, SkU8 id) {
     if (id == SK_NONE) {
@@ -470,7 +476,6 @@ static void tick_environment(Game *g) {
     const Hotspot *h;
     if (g->time_notice)
         --g->time_notice;
-    g->enemy_active = g->room == 3 || (g->room == 1 && game_daylight(g) < 8);
     i = echo_index(g->room);
     if (i != SK_NONE) {
         h = game_hotspot(g->room, i);
@@ -492,23 +497,6 @@ static void tick_environment(Game *g) {
             } else if (!(g->rune_mask & (1 << i)) && g->charge[i])
                 --g->charge[i];
         }
-    if (g->enemy_active && !g->ward_timer && g->tick % 8 == 0) {
-        if (light_sees(g, g->enemy_x, g->enemy_y)) {
-            if (g->enemy_x < 238)
-                g->enemy_x += 2;
-        } else {
-            if (g->enemy_x < g->x)
-                ++g->enemy_x;
-            else if (g->enemy_x > g->x)
-                --g->enemy_x;
-            if (g->enemy_y < g->y)
-                ++g->enemy_y;
-            else if (g->enemy_y > g->y)
-                --g->enemy_y;
-        }
-        if (distance(g->x, g->enemy_x) + distance(g->y, g->enemy_y) < 18 && g->fear < 96)
-            g->fear += 4;
-    }
     if (++g->pulse >= 60) {
         g->pulse = 0;
         ++g->seconds;
@@ -567,6 +555,7 @@ void game_tick(Game *g, const SkInput *in) {
          g->mode == G_CORRIDOR)) {
         g->return_mode = g->mode;
         g->mode = G_PAUSE;
+        g->bow_draw = g->shot_request = 0;
         g->option = 0;
         return;
     }
@@ -703,15 +692,20 @@ void game_tick(Game *g, const SkInput *in) {
         return;
     if (in->pressed & SK_JOURNAL) {
         g->mode = G_JOURNAL;
+        g->bow_draw = g->shot_request = 0;
         return;
     }
     if (in->pressed & SK_LIGHT)
         g->lamp = !g->lamp;
     if (in->pressed & SK_BACK)
         silver_ward(g);
-    move_player(g, in);
+    if (!g->bow_mode && !(in->pressed & SK_TURN_LEFT))
+        move_player(g, in);
     tick_environment(g);
-    if (g->mode == G_EXPLORE && advance) {
+    combat_tick(g, in);
+    if (g->fear >= 96 && g->mode == G_EXPLORE)
+        game_checkpoint(g);
+    if (g->mode == G_EXPLORE && advance && !g->bow_mode) {
         nearby = game_nearby(g);
         /* A gun click on the next destination must not activate the object
            currently beside the player. Pad A still inspects the nearest one. */

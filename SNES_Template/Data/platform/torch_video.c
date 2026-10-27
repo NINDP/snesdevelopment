@@ -26,6 +26,7 @@ void torch_draw(const Game *g) {
     }
     /* Precomputed eight-sprite poses: two shifts, no software multiply,
        division, random source, WRAM particle pool, or frame-time OAM loop. */
-    offset = ((SkU16)((g->direction >> 1) & 3) << 10) + ((g->tick & 31) << 5);
+    offset = (g->bow_mode ? 4096 : (SkU16)((g->direction >> 1) & 3) << 10) +
+             ((g->tick & 31) << 5);
     torch_oam_draw(offset);
 }

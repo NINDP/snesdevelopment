@@ -287,7 +287,10 @@ def run(core,ending,pal=False,scope=False):
     r.light();r.capture('lamp-on');on=np.array(e.frame)
     assert np.count_nonzero(np.max(on[80:220],axis=2)>32)>300,'Mode 7 ground missing'
     assert np.count_nonzero(np.any(on[0:24]>64,axis=2))==0,'Permanent header returned'
-    assert np.count_nonzero(np.any(on[208:224]>64,axis=2))<1500,'Permanent footer returned'
+    # A sunlit floor legitimately fills the bottom rows with bright pixels.
+    # The torch-only scene still distinguishes a footer by its bright area.
+    if not daylight(e.state()):
+        assert np.count_nonzero(np.any(on[208:224]>64,axis=2))<1500,'Permanent footer returned'
     r.lighting_roundtrip('village')
     e.tap(1);e.wait_mode(6);r.capture('status')
     saved=e.state();e.run(60)
