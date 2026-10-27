@@ -245,6 +245,8 @@ static void test_scope_billboard(void) {
     assert(perspective_project(&g, 56, 78, &sx, &sy));
     assert(perspective_pick_target(&g, sx, sy - 16, &wx, &wy));
     assert(wx == 56 && wy == 78);
+    assert(perspective_pick_target(&g, sx + 12, sy - 40, &wx, &wy));
+    assert(wx == 56 && wy == 78); /* The new 32x48 shoulder/head silhouette. */
     in.scope = in.fire = in.aim_valid = 1;
     in.x = wx;
     in.y = wy;
@@ -287,7 +289,7 @@ static void test_clock_and_text(void) {
             assert(strlen(line->text) <= 154);
             assert(strlen(line->text) == line->length);
         }
-    assert(sizeof(Game) == 148);
+    assert(sizeof(Game) == 152);
 }
 
 static void test_optional_systems(void) {
@@ -515,7 +517,48 @@ static void test_daycycle(void) {
     assert(g.day_seconds == second && g.day_number == day + 1);
 }
 
+static void test_interaction_feedback(void) {
+    Game g;
+    SkInput in = none;
+    unsigned i;
+    game_new(&g); finish(&g);
+    /* A diagonal approach used to select the trace at the feet and put the
+       visibly nearby elder just outside the interaction diamond. */
+    g.x = g.destination_x = 80; g.y = g.destination_y = 100;
+    g.direction = 0;
+    assert(game_nearby(&g) == 0);
+    press(&g, SK_ACTION);
+    assert(g.mode == G_DIALOGUE && g.dialogue == D_HEAD);
+    finish(&g);
+    g.room = g.checkpoint_room = 1;
+    g.x = g.destination_x = 28; g.y = g.destination_y = 166;
+    g.lamp = 1; g.direction = 0;
+    press(&g, SK_ACTION);
+    assert(g.notice == 3 && g.notice_ticks && g.mode == G_EXPLORE);
+    g.flags |= F_BIRCH;
+    press(&g, SK_ACTION);
+    assert(g.forest_step == 1 && g.notice == 13 && g.notice_ticks == 180);
+    press(&g, SK_JOURNAL);
+    for (i=0;i<90;++i) game_tick(&g,&none);
+    assert(g.notice_ticks == 180);
+    press(&g, SK_JOURNAL);
+    g.flags |= F_MIRO | F_CONFESS;
+    g.x = g.destination_x = 184; g.y = g.destination_y = 98;
+    press(&g, SK_ACTION);
+    assert(g.mode == G_DIALOGUE && g.dialogue == D_CONFESS);
+    finish(&g);
+    assert((g.flags & F_CONFESS) && g.mode == G_EXPLORE);
+    /* Explicit Scope targets must not be rejected merely because an urn
+       is slightly closer to the player than the clicked silver token. */
+    g.room = 2; g.x = g.destination_x = 110; g.y = g.destination_y = 138;
+    g.flags |= F_PRIEST | F_TIKHON;
+    in.scope = in.fire = in.aim_valid = 1; in.x = 84; in.y = 124;
+    game_tick(&g, &in);
+    assert(g.mode == G_DIALOGUE && g.dialogue == D_TOKEN && g.last_hotspot == 6);
+}
+
 int main(void) {
+    test_interaction_feedback();
     test_daycycle();
     test_perspective();
     test_corridor();

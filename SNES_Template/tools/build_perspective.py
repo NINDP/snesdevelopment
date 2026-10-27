@@ -9,7 +9,7 @@ ORIGIN=384
 # The camera follows the player. A screen-space pool stays round instead of
 # stretching the light to the horizon with the Mode 7 floor.
 TORCH_RADII=(78,79,78,77)
-OVERLAY_CUTS=(224,128,88,64,16,48,200)
+OVERLAY_CUTS=(224,128,88,64,16,48,200,192)
 
 def hdma_rows(rows):
     """Direct HDMA, coalescing identical rows. Never cross its 127-row limit."""
@@ -127,21 +127,27 @@ def build(out, assembly, palette):
         content.append('const '+kind+' '+name+'['+str(len(values))+'] = {'+','.join(map(str,values))+'};')
     import json
     rooms=json.loads((ROOT/'assets/story.json').read_text())['rooms']
-    props=[[(256,0),(258,0),(332,2),(328,3),(324,2),(38,2)],
-           [(326,2),(260,0),(324,2),(324,2),(358,2),(328,3),(332,2),(324,2),(38,2),(328,3)],
-           [(262,0),(264,0),(332,2),(328,3),(328,3),(326,2),(480,2),(326,2),(328,3)],
-           [(260,0),(328,3),(38,2),(38,2),(38,2),(328,3),(332,2),(328,3),(38,2)]]
-    decor=[[(48,62,328,3),(196,67,328,3)],
-           [(x,y+20,320,1) for x,y in [(70,37),(116,36),(166,35),(221,40),(27,74),(150,106),(44,172),(213,174),(244,154)]],
-           [(28,68,328,3),(224,68,328,3),(28,120,328,3),(224,120,328,3)],
-           [(20,44,324,3),(80,44,324,3),(176,44,324,3),(232,44,324,3)]]
+    props=[[(0,0),(1,0),(452,2),(486,2),(462,2),(484,2)],
+           [(460,2),(2,0),(454,2),(456,2),(458,2),(486,2),(452,2),(462,2),(484,2),(486,2)],
+           [(3,0),(4,0),(452,2),(396,3),(486,2),(460,2),(480,2),(456,2),(486,2)],
+           [(2,0),(396,3),(492,2),(494,2),(492,2),(396,3),(452,2),(486,2),(484,2)]]
+    decor=[[(48,64,320,4),(196,68,320,4),(146,132,232,5),(120,40,320,4),
+            (20,176,44,2),(240,176,44,2),(36,176,44,2),(224,176,44,2),
+            (22,94,300,2),(37,96,300,2),(214,98,302,2),(228,98,42,2),
+            (136,136,302,2),(92,164,42,2),(72,68,44,2),(220,70,44,2)],
+           [(x,y,384,1) for x,y in [(24,102),(76,52),(164,46),(220,56),(244,178),(20,192),(88,204),
+                                    (52,52),(128,36),(200,32),(244,80),(8,144),(156,208)]]+
+           [(44,118,490,2),(224,160,490,2),(68,178,492,2)],
+           [(28,68,396,3),(224,68,396,3),(28,120,396,3),(224,120,396,3)],
+           [(20,44,492,2),(80,44,492,2),(176,44,492,2),(232,44,492,2)]]
     counts=[]
     for room in range(4):
         objects=[(x,y,*props[room][i]) for i,(x,y,_) in enumerate(rooms[room]['hotspots'])]
         # Decorative crowns must not replace the floor's movement target.
         objects += [(x,y,tile,kind|0x80) for x,y,tile,kind in decor[room]]
         objects.sort(key=lambda obj:obj[1],reverse=True)
-        if sum(2 if (obj[3]&0x7f)==0 else 1 for obj in objects)+6>50:
+        costs={0:6,1:2,2:1,3:1,4:4,5:4}
+        if sum(costs[obj[3]&0x7f] for obj in objects)+6>50:
             raise ValueError('Scenery/hero overlap enemy and torch OBJ slots')
         counts.append(len(objects))
         content.append('static const PerspectiveObject objects%d[] = {'%room+','.join('{%d,%d,%d,%d}'%obj for obj in objects)+'};')

@@ -85,9 +85,9 @@ def build(out,assembly):
             if not ammo:
                 message='НЕТ СТРЕЛ: ПОПОЛНИ У СОСУДА'
             elif scope:
-                message='ЛУК %02d FIRE: ОГОНЬ L: УБРАТЬ'%ammo
+                message='ЛУК %02d FIRE: ОГОНЬ R: ТОЛЧОК'%ammo
             else:
-                message='ЛУК %02d A: НАТЯНУТЬ L: УБРАТЬ'%ammo
+                message='ЛУК %02d A: ТЕТИВА R: ТОЛЧОК'%ammo
             encoded=message.encode('cp1251')
             assert len(encoded)<=28,(message,len(encoded))
             for index,ch in enumerate(encoded,34):rows[index]=ch|attributes
@@ -96,5 +96,21 @@ def build(out,assembly):
     (out/'bow-hud.map').write_bytes(maps)
     assembly+=['.section "bow_hud_maps" superfree','bow_hud_maps:',
                '.incbin "assets/generated/bow-hud.map"','.ends','']
+    statuses=('НАТЯЖЕНИЕ [---]', 'НАТЯЖЕНИЕ [=--]', 'НАТЯЖЕНИЕ [==-]',
+              'ПОЛНОЕ НАТЯЖЕНИЕ [===]', 'ПЕРЕЗАРЯДКА', 'ТОЛЧОК',
+              'УДАР! НАТЯЖЕНИЕ СБИТО', 'ПОПОЛНИ СТРЕЛЫ У СОСУДА')
+    status_maps=bytearray()
+    for status in statuses:
+        row=[261|attributes]*32
+        row[0]=265|attributes;row[-1]=266|attributes
+        encoded=(' '+status+' ').encode('cp1251')
+        assert len(encoded)<=28
+        start=(32-len(encoded))//2
+        for index,ch in enumerate(encoded,start):row[index]=ch|attributes
+        status_maps.extend(struct.pack('<32H',*row))
+    assert len(status_maps)==512
+    (out/'bow-status.map').write_bytes(status_maps)
+    assembly+=['.section "bow_status_maps" superfree','bow_status_maps:',
+               '.incbin "assets/generated/bow-status.map"','.ends','']
     print('bow atlas',len(data),'ROM bytes, OBJ64..95, five arrow angles plus flips')
     print('bow HUD',len(maps),'ROM bytes, 50 ready-to-copy three-row panels')

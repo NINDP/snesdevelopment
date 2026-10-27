@@ -14,7 +14,7 @@ extern const SkU16 perspective_pick_scale[176];
 SkU8 perspective_project(const Game *g, SkS16 x, SkS16 y, SkS16 *sx, SkS16 *sy);
 SkU8 perspective_pick(const Game *g, SkS16 sx, SkS16 sy, SkS16 *x, SkS16 *y);
 SkU8 perspective_pick_target(const Game *g, SkS16 sx, SkS16 sy, SkS16 *x, SkS16 *y);
-void perspective_enter(SkU8 room);
+void perspective_enter(const Game *g);
 void perspective_draw(const Game *g);
 void perspective_commit(void);
 void perspective_overlay(SkU8 cut);

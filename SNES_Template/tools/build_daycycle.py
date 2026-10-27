@@ -41,8 +41,11 @@ def build(out,assembly):
         (out/(name+'.pal')).write_bytes(ramp((out/('perspective%d.pal'%room)).read_bytes()))
         assembly+=['.section "'+name+'" superfree',name+'_palettes:',
                    '.incbin "assets/generated/'+name+'.pal"','.ends']
-    (out/'daylight-actors.pal').write_bytes(ramp((out/'palette.pal').read_bytes()+
+    (out/'daylight-actors.pal').write_bytes(ramp((out/'npc.pal').read_bytes()+
                                                    (out/'hero.pal').read_bytes(),True))
     assembly+=['.section "daylight_actors" superfree','daylight_actor_palettes:',
                '.incbin "assets/generated/daylight-actors.pal"',
                'perspective_sky_brightness:', '.db 127,15,97,15,0','.ends']
+    (out/'daylight-scenery.pal').write_bytes(ramp((out/'scenery.pal').read_bytes(),True))
+    assembly+=['.section "daylight_scenery" superfree','daylight_scenery_palettes:',
+               '.incbin "assets/generated/daylight-scenery.pal"','.ends']

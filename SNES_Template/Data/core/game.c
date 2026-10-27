@@ -13,6 +13,8 @@ static void begin_dialogue(Game *g, SkU8 id) {
     g->text_delay = 0;
     g->destination_x = g->x;
     g->destination_y = g->y;
+    g->focus = SK_NONE;
+    g->notice_ticks = 0;
 }
 static void begin_choice(Game *g, SkU8 id) {
     g->mode = G_CHOICE;
@@ -33,6 +35,8 @@ static void enter_room(Game *g, SkU8 room) {
     g->mode = G_EXPLORE;
     g->notice = 0;
     g->echo_charge = 0;
+    g->focus = SK_NONE;
+    g->notice_ticks = 0;
     combat_enter(g);
 }
 void game_init(Game *g) {
@@ -40,6 +44,7 @@ void game_init(Game *g) {
     daycycle_init(g);
     combat_init(g);
     g->mode = G_SPLASH;
+    g->focus = SK_NONE;
     g->oil = 120;
 }
 void game_new(Game *g) {
@@ -207,19 +212,46 @@ SkU8 game_can_walk(SkU8 room, SkS16 x, SkS16 y) {
     }
     return !sk_contains(&obstacle, x, y);
 }
+#ifndef SNES_TARGET
 SkU8 game_nearby(const Game *g) {
-    SkU8 i, best = SK_NONE;
-    SkS16 d, minimum = 42;
-    const Hotspot *h;
-    for (i = 0; i < game_hotspot_count(g->room); ++i) {
-        h = game_hotspot(g->room, i);
-        d = distance(g->x, h->x) + distance(g->y, h->y);
+    SkU8 i, best = SK_NONE, count = game_hotspot_count(g->room);
+    SkU8 sun = game_daylight(g), facing = (g->direction >> 1) & 3;
+    SkS16 dx, dy, ax, ay, d, minimum = 255;
+    const Hotspot *h = game_hotspot(g->room, 0);
+    if (!sun && !g->lamp) return SK_NONE;
+    if (!sun && !g->oil) return SK_NONE;
+    for (i = 0; i < count; ++i, ++h) {
+        dx = h->x - g->x; dy = h->y - g->y;
+        ax = dx < 0 ? -dx : dx;
+        if (ax >= 56) continue;
+        ay = dy < 0 ? -dy : dy;
+        d = ax + ay;
+        if (d >= 56) continue;
+        /* A looks at the object in front of the actor. A trace at the feet
+           must not steal a nearby conversation the player is facing. */
+        if ((facing == 0 && dy > -8) || (facing == 1 && dx < 8) ||
+            (facing == 2 && dy < 8) || (facing == 3 && dx > -8))
+            d += 48;
         if (d >= minimum)
             continue;
-        if (!game_visible(g, h->x, h->y))
+        if (!sun && !light_sees(g, h->x, h->y))
             continue;
         best = i;
         minimum = d;
+    }
+    return best;
+}
+#endif
+static SkU8 scope_nearby(const Game *g, const SkInput *in) {
+    SkU8 i, best = SK_NONE, count = game_hotspot_count(g->room);
+    SkS16 d, minimum = 15;
+    const Hotspot *h = game_hotspot(g->room, 0);
+    for (i = 0; i < count; ++i, ++h) {
+        d = distance(in->x, h->x) + distance(in->y, h->y);
+        if (d >= minimum) continue;
+        if (distance(g->x, h->x) + distance(g->y, h->y) >= 56) continue;
+        if (!game_visible(g, h->x, h->y)) continue;
+        minimum = d; best = i;
     }
     return best;
 }
@@ -250,6 +282,7 @@ static void inspect_echo(Game *g) {
     begin_dialogue(g, g->room == 0 ? D_ECHO_HOME : (g->room == 1 ? D_ECHO_BOAT : D_ECHO_STONE));
 }
 static void silver_ward(Game *g) {
+    g->notice_ticks = 180;
     if (!HAS(g, F_TOKEN)) {
         g->notice = 10;
         return;
@@ -270,8 +303,11 @@ static void interact(Game *g, SkU8 id) {
     if (id == SK_NONE) {
         if (!game_daylight(g) && (!g->lamp || !g->oil))
             begin_dialogue(g, D_NO_LIGHT);
+        else { g->notice = 17; g->notice_ticks = 120; }
         return;
     }
+    g->notice = 0;
+    g->notice_ticks = 180;
     ++g->interactions;
     g->last_hotspot = id;
     if (id == echo_index(g->room)) {
@@ -300,18 +336,18 @@ static void interact(Game *g, SkU8 id) {
     } else if (g->room == 1) {
         if (id == 0)
             begin_dialogue(g, D_BIRCH);
-        if (id == 1 && !HAS(g, F_MIRO))
-            begin_dialogue(g, D_MIRO);
+        if (id == 1)
+            begin_dialogue(g, !HAS(g, F_MIRO) ? D_MIRO : (HAS(g, F_CONFESS) ? D_CONFESS : D_DENY));
         if (id >= 2 && id <= 4) {
             if (!HAS(g, F_BIRCH)) {
                 g->notice = 3;
                 return;
             }
-            if (HAS(g, F_FOREST))
-                return;
-            if (id - 2 == g->forest_step)
+            if (HAS(g, F_FOREST)) { g->notice = 12; return; }
+            if (id - 2 == g->forest_step) {
                 ++g->forest_step;
-            else {
+                g->notice = g->forest_step == 1 ? 13 : 14;
+            } else {
                 g->forest_step = 0;
                 g->notice = 2;
                 if (g->fear < 85)
@@ -324,7 +360,7 @@ static void interact(Game *g, SkU8 id) {
             if (HAS(g, F_FOREST | F_MIRO))
                 enter_room(g, 2);
             else
-                g->notice = 3;
+                g->notice = HAS(g, F_FOREST) ? 20 : 21;
         }
         if (id == 6)
             refill(g);
@@ -345,7 +381,7 @@ static void interact(Game *g, SkU8 id) {
                 g->chapel_step = 0;
                 g->option = 0;
             } else
-                g->notice = 4;
+                g->notice = HAS(g, F_CHAPEL) ? 16 : 4;
         }
         if (id == 4) {
             if (HAS(g, F_CHAPEL)) {
@@ -353,7 +389,7 @@ static void interact(Game *g, SkU8 id) {
                 if (!HAS(g, F_REVEAL))
                     begin_dialogue(g, D_REVEAL);
             } else
-                g->notice = 4;
+                g->notice = 18;
         }
         if (id == 5)
             begin_dialogue(g, D_MARK);
@@ -361,7 +397,7 @@ static void interact(Game *g, SkU8 id) {
             enter_room(g, 1);
         if (id == 7) {
             if (!HAS(g, F_TOKEN))
-                g->notice = 4;
+                g->notice = 19;
             else if (g->memories & 8)
                 begin_dialogue(g, D_BELL_DONE);
             else
@@ -371,7 +407,7 @@ static void interact(Game *g, SkU8 id) {
             if (HAS(g, F_PRIEST | F_TIKHON))
                 begin_dialogue(g, D_TOKEN);
             else
-                g->notice = 4;
+                g->notice = 19;
         }
     } else {
         if (id == 0 && !HAS(g, F_REVEAL))
@@ -381,6 +417,7 @@ static void interact(Game *g, SkU8 id) {
         if (id >= 2 && id <= 4) {
             if (g->charge[id - 2] >= 60) {
                 g->rune_mask |= 1 << (id - 2);
+                g->notice = 15;
             } else
                 g->notice = 5;
             if (g->rune_mask == 7 && !HAS(g, F_WITNESS))
@@ -390,7 +427,7 @@ static void interact(Game *g, SkU8 id) {
             if (HAS(g, F_WITNESS))
                 begin_dialogue(g, g->memories == 15 ? D_REMEMBER : D_FINAL);
             else
-                g->notice = 5;
+                g->notice = 23;
         }
         if (id == 6)
             refill(g);
@@ -476,6 +513,8 @@ static void tick_environment(Game *g) {
     const Hotspot *h;
     if (g->time_notice)
         --g->time_notice;
+    if (g->notice_ticks)
+        --g->notice_ticks;
     i = echo_index(g->room);
     if (i != SK_NONE) {
         h = game_hotspot(g->room, i);
@@ -520,7 +559,6 @@ void game_tick(Game *g, const SkInput *in) {
                    (in->scope && in->fire && in->aim_valid && !in->offscreen);
     SkU16 length;
     const StoryLine *line;
-    const Hotspot *point;
     SkU8 nearby, wanted;
     if (g->mode == G_PAUSE) {
         if (in->pressed & (SK_PAUSE | SK_BACK)) {
@@ -705,18 +743,18 @@ void game_tick(Game *g, const SkInput *in) {
     combat_tick(g, in);
     if (g->fear >= 96 && g->mode == G_EXPLORE)
         game_checkpoint(g);
+    if (!g->bow_mode && g->mode == G_EXPLORE &&
+        ((!(g->tick & 3) && !g->notice_ticks) || advance || (in->pressed & SK_LIGHT)))
+        g->focus = game_nearby(g);
     if (g->mode == G_EXPLORE && advance && !g->bow_mode) {
-        nearby = game_nearby(g);
+        nearby = g->focus;
         /* A gun click on the next destination must not activate the object
            currently beside the player. Pad A still inspects the nearest one. */
         if (in->scope && in->fire) {
             if (!in->aim_valid)
                 return;
-            if (nearby == SK_NONE)
-                return;
-            point = game_hotspot(g->room, nearby);
-            if (distance(in->x, point->x) + distance(in->y, point->y) > 14)
-                return;
+            nearby = scope_nearby(g, in);
+            if (nearby == SK_NONE) return;
         }
         interact(g, nearby);
     }

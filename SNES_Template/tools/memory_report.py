@@ -38,7 +38,7 @@ def report():
         entries = re.findall(r'^\s*(\S+) dsb (\d+)\s*$', path.read_text(), re.M)
         allocations[str(path.relative_to(ROOT))] = sum(int(n) for _, n in entries)
         sizes.update({name.split('{WLA_FILENAME}_')[-1]: int(n) for name, n in entries})
-    expected = {'text_map': 1792, 'tables': 266, 'heat_tables': 266, 'game': 148}
+    expected = {'text_map': 1792, 'tables': 266, 'heat_tables': 266, 'game': 152}
     for name, size in expected.items():
         if sizes.get(name) != size:
             raise ValueError('Unexpected buffer/state size: ' + name)
@@ -106,7 +106,7 @@ def report():
             if inner_l<=inner_r and not outer_l<=inner_l<=inner_r<=outer_r:
                 raise ValueError('Inner glow escapes the visibility window')
         light_bytes+=len(payload)
-        for cut in (224,128,88,64,16,48,200):
+        for cut in (224,128,88,64,16,48,200,192):
             payload=(assets/('perspective-glow%d-%d.hdma'%(phase,cut))).read_bytes()
             rows=hdma_rows(payload,1)
             if len(rows)!=224 or any(row[0]>15 for row in rows):
@@ -123,6 +123,14 @@ def report():
         raise ValueError('Expected 32 streamed 1 KiB hero frames')
     if (assets/'hero.pal').stat().st_size!=32:
         raise ValueError('Hero palette must contain 16 colors')
+    npc_frames=list(assets.glob('npc-*.chr'))
+    npc_addresses=re.findall(r'^([0-9a-fA-F]{8}) npc_frame\d+$',symbols,re.M)
+    if len(npc_frames)!=15 or any(p.stat().st_size!=1024 for p in npc_frames) or len(npc_addresses)!=15:
+        raise ValueError('Expected five residents with three authored idle frames')
+    if any((int(addr,16)&0x7fff)>32768-1024 for addr in npc_addresses):
+        raise ValueError('NPC frame DMA crosses a LoROM bank')
+    if (assets/'npc.pal').stat().st_size!=32:
+        raise ValueError('Resident palette must contain 16 colors')
     hero_addresses=re.findall(r'^([0-9a-fA-F]{8}) hero_frame\d+$',symbols,re.M)
     if len(hero_addresses)!=32 or any((int(addr,16)&0x7fff)>32768-1024 for addr in hero_addresses):
         raise ValueError('Hero frame DMA must not cross a LoROM bank boundary')
@@ -140,12 +148,33 @@ def report():
     if (assets/'torch-planted-oam.bin').stat().st_size!=1024:
         raise ValueError('Expected thirty-two planted torch poses')
     for name,size in (('torch_tiles',4096),('torch_oam_frames',5120),
-                      ('bow_tiles',1024),('bow_hud_maps',9600)):
+                      ('bow_tiles',1024),('bow_hud_maps',9600),('bow_status_maps',512)):
         match=re.search(r'^([0-9a-fA-F]{8}) '+name+'$',symbols,re.M)
         if not match or (int(match[1],16)&0x7fff)>32768-size:
             raise ValueError('Torch DMA/animation data crosses a LoROM bank: '+name)
     if (assets/'bow.chr').stat().st_size!=1024 or (assets/'bow-hud.map').stat().st_size!=9600:
         raise ValueError('Unexpected bow atlas/HUD size')
+    if (assets/'bow-status.map').stat().st_size!=512:
+        raise ValueError('Unexpected bow charge/status panels')
+    scenery_bytes=0
+    backdrop_bytes=0
+    for room in range(2):
+        for suffix,label,size in (('chr','tiles',6144),('map','map',2048)):
+            filename='backdrop%d.%s'%(room,suffix)
+            match=re.search(r'^([0-9a-fA-F]{8}) backdrop%d_%s$'%(room,label),symbols,re.M)
+            if (assets/filename).stat().st_size!=size or not match or (int(match[1],16)&0x7fff)>32768-size:
+                raise ValueError('Backdrop DMA must fit a LoROM bank: '+filename)
+            backdrop_bytes+=size
+    if (assets/'backdrop.pal').stat().st_size!=544:
+        raise ValueError('Expected seventeen backdrop palette levels')
+    for filename,symbol,size in (('scenery.chr','scenery_tiles',6144),
+            ('scenery-low.chr','scenery_low_tiles',1024),
+            ('scenery-compact.chr','scenery_compact_tiles',1024),
+            ('daylight-scenery.pal','daylight_scenery_palettes',544)):
+        match=re.search(r'^([0-9a-fA-F]{8}) '+symbol+'$',symbols,re.M)
+        if (assets/filename).stat().st_size!=size or not match or (int(match[1],16)&0x7fff)>32768-size:
+            raise ValueError('Scenery DMA must fit one LoROM bank: '+filename)
+        scenery_bytes+=size
     daylight_bytes=0
     for filename,symbol,size in (('daylight0.pal','daylight0_palettes',4352),
             ('daylight1.pal','daylight1_palettes',4352),
@@ -161,6 +190,16 @@ def report():
                 if palette[0]!=0 or payload[level*256+58:level*256+64]!=payload[58:64]:
                     raise ValueError('Daylight changed transparent/UI colors: '+filename)
         daylight_bytes+=size
+    interaction_bytes=0
+    for filename,symbol,size in [*[(('interaction%d.map'%room),('interaction%d_maps'%room),4096)
+                                  for room in range(4)],
+            ('interaction-notices.map','interaction_notice_maps',6144),
+            ('interaction-points.bin','interaction_points',128)]:
+        payload=(assets/filename).read_bytes()
+        match=re.search(r'^([0-9a-fA-F]{8}) '+symbol+'$',symbols,re.M)
+        if len(payload)!=size or not match or (int(match[1],16)&0x7fff)>32768-size:
+            raise ValueError('Interaction panel must fit one LoROM bank: '+filename)
+        interaction_bytes+=size
     samples = sum(p.stat().st_size for p in assets.glob('*.brr'))
     if samples > 4096:
         raise ValueError('BRR payload exceeds the allocated 4 KiB sample region')
@@ -176,13 +215,17 @@ def report():
               'background_bytes': backgrounds, 'cinematic_bytes': cinematics,
               'perspective_bytes': perspective, 'torch_table_bytes': light_bytes,
               'daycycle_rom_bytes': daylight_bytes,
+              'interaction_rom_bytes': interaction_bytes,
               'fastrom': True, 'ambient_map_bytes': 2048, 'font_bytes': font,
               'sprite_bytes': sprites, 'hero_frame_bytes': 1024, 'hero_rom_bytes': 32768,
+              'npc_rom_bytes': 15360, 'npc_obj_bytes': 2048,
               'torch_obj_bytes': 4096, 'torch_oam_rom_bytes': 4096,
               'planted_torch_oam_rom_bytes': 1024,
-              'bow_frame_rom_bytes': 16384, 'bow_obj_bytes': 1024, 'bow_hud_rom_bytes': 9600,
+              'bow_frame_rom_bytes': 16384, 'bow_obj_bytes': 1024, 'bow_hud_rom_bytes': 10112,
+              'scenery_obj_bytes': 8192, 'scenery_rom_bytes': scenery_bytes,
+              'backdrop_vram_bytes': 8192, 'backdrop_rom_bytes': backdrop_bytes+544,
               'brr_payload_bytes': samples,
-              'vram_actual_peak_bytes': max(max(backgrounds.values()) + 4096,
+              'vram_actual_peak_bytes': max(32768 + 8192, max(backgrounds.values()) + 4096,
                                              max(size + (4096 if name == 'cine0.chr' else 2048)
                                                  for name, size in cinematics.items())) + font + 2048 + sprites,
               'rom_bytes': (ROOT / 'chernorechye.sfc').stat().st_size}

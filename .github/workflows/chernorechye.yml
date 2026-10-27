@@ -14,7 +14,7 @@ concurrency:
 jobs:
   build-and-play:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Dependencies
@@ -64,6 +64,22 @@ jobs:
           python3 tests/rom_smoke.py --core "$core" --ending secret --pal
           python3 tests/rom_profile.py --core "$core"
           python3 tests/rom_profile.py --core "$core" --pal
+          python3 tests/rom_scope.py --core "$core"
+          python3 tests/rom_scope.py --core "$core" --pal
+          python3 tests/rom_hero.py --core "$core"
+          python3 tests/rom_hero.py --core "$core" --pal
+          python3 tests/rom_torch.py --core "$core"
+          python3 tests/rom_torch.py --core "$core" --pal
+          python3 tests/rom_daycycle.py --core "$core"
+          python3 tests/rom_daycycle.py --core "$core" --pal
+          python3 tests/rom_combat.py --core "$core"
+          python3 tests/rom_combat.py --core "$core" --pal
+          python3 tests/rom_survival.py --core "$core"
+          python3 tests/rom_survival.py --core "$core" --pal
+          python3 tests/rom_interaction.py --core "$core"
+          python3 tests/rom_interaction.py --core "$core" --pal
+          python3 tests/rom_locations.py --core "$core"
+          python3 tests/rom_locations.py --core "$core" --pal
       - name: Package source, ROM and reports
         working-directory: SNES_Template
         run: python3 tools/package.py
@@ -76,4 +92,5 @@ jobs:
             SNES_Template/docs/
             SNES_Template/build/*.json
             SNES_Template/build/*.png
+            SNES_Template/build/*.gif
           retention-days: 90

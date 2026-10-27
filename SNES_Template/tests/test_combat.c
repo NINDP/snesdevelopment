@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "game.h"
 #include "perspective.h"
@@ -51,7 +52,7 @@ static unsigned flying(const Game *g) {
 }
 
 static void test_layout(void) {
-    assert(sizeof(Game) == 148);
+    assert(sizeof(Game) == 152);
     assert(offsetof(Game, day_seconds) == 52);
     assert(offsetof(Game, nights) == 60);
     assert(offsetof(Game, enemies) == 76);
@@ -124,7 +125,7 @@ static void test_later_nights_move_faster(void) {
 
 static void test_crawlers_push_through_fire(void) {
     Game shadow, crawler, unlit;
-    unsigned i;
+    unsigned i, lit_windup = 80, dark_windup = 80;
     arena(&shadow, 3);
     shadow.nights = 4;
     shadow.ward_timer = 0;
@@ -143,10 +144,12 @@ static void test_crawlers_push_through_fire(void) {
         game_tick(&shadow, &idle);
         game_tick(&crawler, &idle);
         game_tick(&unlit, &idle);
+        if (crawler.enemies[0].state == ENEMY_WINDUP && lit_windup == 80) lit_windup = i;
+        if (unlit.enemies[0].state == ENEMY_WINDUP && dark_windup == 80) dark_windup = i;
     }
     assert(shadow.enemies[0].x >= 148 && !shadow.fear);
     assert(crawler.enemies[0].x < 148 && crawler.fear > 0);
-    assert(crawler.enemies[0].x > unlit.enemies[0].x);
+    assert(lit_windup >= dark_windup && lit_windup < 80);
 }
 
 static void test_dawn_clears_defeated_actors(void) {
@@ -368,6 +371,176 @@ static void test_pad_bow_with_scope_connected(void) {
     assert(g.ammo == BOW_AMMO_MAX - 1 && flying(&g));
 }
 
+static void test_telegraphed_attack_and_dodge(void) {
+    Game hit, dodge;
+    unsigned i;
+    arena(&hit, 3);
+    hit.ward_timer = hit.lamp = 0;
+    hit.enemies[0].x = hit.x;
+    hit.enemies[0].y = hit.y - 24;
+    hit.enemies[0].attack = hit.enemies[0].step = 0;
+    for (i = 0; i < 8; ++i) combat_tick(&hit, &idle);
+    assert(hit.enemies[0].state == ENEMY_WINDUP && !hit.fear);
+    dodge = hit;
+    dodge.x += 48;
+    for (i = 0; i < 19; ++i) {
+        combat_tick(&hit, &idle);
+        combat_tick(&dodge, &idle);
+        assert(!hit.fear && !dodge.fear);
+    }
+    assert(hit.enemies[0].state == ENEMY_WINDUP);
+    for (i = 0; i < 20; ++i) {
+        combat_tick(&hit, &idle);
+        combat_tick(&dodge, &idle);
+    }
+    assert(hit.fear == 4 && hit.hurt_timer);
+    assert(hit.enemies[0].state == ENEMY_RECOVER);
+    assert(!dodge.fear && dodge.enemies[0].x == 128);
+    assert(dodge.enemies[0].state == ENEMY_RECOVER);
+    /* Recovery gives a real interval to draw or walk away. */
+    for (i = 0; i < 20; ++i) combat_tick(&hit, &idle);
+    assert(hit.fear == 4);
+}
+
+static void test_group_damage_and_interrupt(void) {
+    Game g;
+    SkInput held = idle;
+    unsigned i;
+    arena(&g, 3);
+    g.nights = 4;
+    combat_enter(&g);
+    g.ward_timer = g.lamp = 0;
+    g.bow_mode = 1;
+    g.bow_draw = BOW_DRAW_TICKS;
+    g.shot_request = 1;
+    for (i = 0; i < COMBAT_ENEMIES; ++i) {
+        g.enemies[i].x = g.x;
+        g.enemies[i].y = g.y - 2;
+        g.enemies[i].state = ENEMY_LUNGE;
+        g.enemies[i].step = 4;
+        g.enemies[i].attack = 10;
+    }
+    held.held = SK_ACTION;
+    combat_tick(&g, &held);
+    assert(g.fear == 10 && g.hurt_timer == 45);
+    assert(!g.bow_draw && !g.shot_request);
+    assert(g.ammo == BOW_AMMO_MAX); /* Being hit cancels a held shot without spending ammo. */
+    g.fear = 254;
+    g.hurt_timer = 0;
+    combat_tick(&g, &idle);
+    assert(g.fear == 100); /* No byte wrap near a checkpoint. */
+}
+
+static void test_shove_cone_cooldown_and_walls(void) {
+    Game g;
+    SkS16 front, back;
+    arena(&g, 3);
+    g.nights = 2;
+    combat_enter(&g);
+    g.direction = 0;
+    g.bow_mode = 1;
+    g.bow_draw = BOW_DRAW_TICKS;
+    g.shot_request = 1;
+    g.enemies[0].x = g.enemies[1].x = g.x;
+    g.enemies[0].y = g.y - 20;
+    g.enemies[1].y = g.y + 10;
+    g.enemies[0].state = ENEMY_WINDUP;
+    g.enemies[0].attack = 20;
+    press(&g, SK_SHOVE);
+    assert(g.shove_cooldown == SHOVE_COOLDOWN && g.ammo == BOW_AMMO_MAX);
+    assert(!g.bow_draw && !g.shot_request);
+    assert(g.enemies[0].y == g.y - 32 && g.enemies[0].state == ENEMY_RECOVER);
+    assert(g.enemies[1].y == g.y + 10 && g.enemies[1].state == ENEMY_HUNT);
+    front = g.enemies[0].y; back = g.enemies[1].y;
+    press(&g, SK_SHOVE);
+    assert(g.shove_cooldown == SHOVE_COOLDOWN - 1);
+    assert(g.enemies[0].y == front && g.enemies[1].y == back);
+    ticks(&g, SHOVE_COOLDOWN, 0);
+    assert(!g.shove_cooldown);
+    /* A shove cannot push an actor through the village building. */
+    arena(&g, 0);
+    g.nights = 2;
+    combat_enter(&g);
+    g.x = g.destination_x = 48;
+    g.y = g.destination_y = 90;
+    g.direction = 0;
+    g.enemies[0].x = 48; g.enemies[0].y = 68;
+    press(&g, SK_SHOVE);
+    assert(g.enemies[0].y == 63 && game_can_walk(g.room, 48, 63));
+}
+
+static void test_arrow_stagger_and_precision(void) {
+    Game g;
+    SkInput scope = idle;
+    Arrow *arrow;
+    unsigned i;
+    arena(&g, 3);
+    g.ward_timer = 0;
+    g.enemies[0].x = g.x;
+    g.enemies[0].y = g.y - 20;
+    g.enemies[0].hp = 2;
+    g.enemies[0].state = ENEMY_LUNGE;
+    g.enemies[0].attack = 10;
+    g.enemies[0].step = 4;
+    arrow = &g.arrows[0];
+    arrow->x = g.x * 4; arrow->y = (g.y - 12) * 4;
+    arrow->dx = 0; arrow->dy = -24; arrow->life = 20; arrow->damage = 1;
+    combat_tick(&g, &idle);
+    assert(g.enemies[0].hp == 1 && g.enemies[0].state == ENEMY_RECOVER);
+    assert(g.enemies[0].y == g.y - 24 && !g.fear);
+    arena(&g, 2);
+    press(&g, SK_TURN_LEFT);
+    scope.scope = scope.fire = scope.aim_valid = 1;
+    scope.x = g.x + 21; scope.y = g.y - 80;
+    combat_tick(&g, &scope);
+    scope.fire = scope.aim_valid = 0;
+    for (i = 1; i < BOW_DRAW_TICKS; ++i) combat_tick(&g, &scope);
+    arrow = &g.arrows[0];
+    assert(g.ammo == BOW_AMMO_MAX - 1 && arrow->damage == 2);
+    assert(arrow->dx > 0 && arrow->dy < 0);
+    assert(abs(arrow->dx * 80 + arrow->dy * 21) <= 80);
+    assert(abs(arrow->dx) <= 24 && abs(arrow->dy) <= 24);
+    /* Pad assistance catches a small offset, without needing a hidden lock. */
+    arena(&g, 3);
+    g.enemies[0].x = 136; g.enemies[0].y = 120; g.enemies[0].hp = 2;
+    g.direction = 0;
+    press(&g, SK_TURN_LEFT);
+    draw(&g, BOW_DRAW_TICKS);
+    assert(g.aim_x == 136 && g.aim_y == 120);
+    ticks(&g, 30, 0);
+    assert(g.kills == 1);
+    arena(&g, 3);
+    g.lamp = 0;
+    g.enemies[0].x = 136; g.enemies[0].y = 120;
+    g.direction = 0;
+    press(&g, SK_TURN_LEFT);
+    draw(&g, BOW_DRAW_TICKS);
+    assert(g.aim_x == g.x && g.aim_y == g.y - 48);
+}
+
+static void test_combat_timers_freeze_and_light_interrupt(void) {
+    Game g;
+    SkU8 hurt, shove_ticks;
+    arena(&g, 3);
+    press(&g, SK_SHOVE);
+    g.hurt_timer = 40;
+    hurt = g.hurt_timer; shove_ticks = g.shove_cooldown;
+    press(&g, SK_PAUSE);
+    ticks(&g, 120, 0);
+    assert(g.hurt_timer == hurt && g.shove_cooldown == shove_ticks);
+    press(&g, SK_PAUSE);
+    press(&g, SK_JOURNAL);
+    ticks(&g, 120, 0);
+    assert(g.hurt_timer == hurt && g.shove_cooldown == shove_ticks);
+    arena(&g, 3);
+    g.ward_timer = 0;
+    g.enemies[0].x = g.x; g.enemies[0].y = g.y - 20;
+    g.enemies[0].state = ENEMY_WINDUP;
+    g.enemies[0].attack = 10;
+    combat_tick(&g, &idle);
+    assert(g.enemies[0].state == ENEMY_RECOVER && !g.fear);
+}
+
 int main(void) {
     test_layout();
     test_nights_and_capacity();
@@ -381,6 +554,11 @@ int main(void) {
     test_walls_and_npc_safety();
     test_scope_and_freeze();
     test_pad_bow_with_scope_connected();
-    puts("PASS: night escalation, bow input, finite ammo, projectiles, walls, NPC safety, Scope and pause");
+    test_telegraphed_attack_and_dodge();
+    test_group_damage_and_interrupt();
+    test_shove_cone_cooldown_and_walls();
+    test_arrow_stagger_and_precision();
+    test_combat_timers_freeze_and_light_interrupt();
+    puts("PASS: bow precision, stagger, telegraphs, dodge, shove, group protection, nights, Scope, pause and NPC safety");
     return 0;
 }

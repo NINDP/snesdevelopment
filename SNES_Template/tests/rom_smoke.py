@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Complete the real ROM through controller events. Never write game RAM."""
 import argparse,json
+import ctypes as C
+import struct
 from pathlib import Path
 import numpy as np
 from libretro import Emulator,ROOT
@@ -21,6 +23,10 @@ def daylight(state):
         (16 if second<576 else 16-(second-576)//4))
     assert state['sun_level']==sun,('Stale daylight',state)
     return sun if state['room']<2 else 0
+def world_cut(state):
+    if state['notice_ticks'] and state['notice']:return 192
+    if state['time_notice'] or state['bow_mode']:return 200
+    return 192 if state['focus']!=255 else 224
 class Runner:
     def __init__(self,e,scope):
         self.e=e;self.scope=scope;self.shots=[];self.prefix=''
@@ -31,7 +37,7 @@ class Runner:
         self.check_darkness(name,self.e.state())
     def check_darkness(self,name,state):
         mode=state['mode']
-        if mode==3:cut=200 if state['time_notice'] else 224
+        if mode==3:cut=world_cut(state)
         elif mode in (2,4,5,6,7,11):
             if mode==2 and state['dialogue']==0:return
             if mode==7 and (state['return_mode']==12 or
@@ -302,7 +308,10 @@ def run(core,ending,pal=False,scope=False):
     assert (np.max(off)>0 if daylight(e.state()) else np.max(off)==0),'Incorrect unlit visibility'
     r.light();r.capture('lamp-on');on=np.array(e.frame)
     assert np.count_nonzero(np.max(on[80:220],axis=2)>32)>300,'Mode 7 ground missing'
-    assert np.count_nonzero(np.any(on[0:24]>64,axis=2))==0,'Permanent header returned'
+    # The daylight panorama now occupies this area. Inspect the UI plane,
+    # rather than treating any bright sky pixel as an unwanted HUD label.
+    header=C.string_at(e.lib.retro_get_memory_data(3)+0xb800,3*32*2)
+    assert all((tile&1023)==0 for tile in struct.unpack('<96H',header)),'Permanent header returned'
     # A sunlit floor legitimately fills the bottom rows with bright pixels.
     # The torch-only scene still distinguishes a footer by its bright area.
     if not daylight(e.state()):

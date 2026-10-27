@@ -462,14 +462,23 @@ def main():
     # Bow OBJ64..95 displaces the silver token; keep it in an unused cell.
     sheet.paste(sheet.crop((0,32,16,48)),(0,240))
     crawler=ImageDraw.Draw(sheet)
-    crawler.ellipse((18,247,29,253),fill=1,outline=2)
-    crawler.polygon(((20,248),(23,244),(27,245),(30,249),(26,251)),fill=2)
-    for x in (19,23,27):
-        crawler.line((x,250,x-2,253,x-1,254),fill=3)
-        crawler.line((x,248,x+2,245),fill=3)
-    crawler.point((27,247),fill=11);crawler.point((29,248),fill=11)
+    crawler.ellipse((17,251,30,255),fill=1)
+    crawler.polygon(((19,247),(22,243),(27,244),(30,247),(28,252),(21,252)),fill=2,outline=3)
+    for x in (20,24,28):
+        crawler.line((x,249,x-3,251,x-4,254),fill=3)
+        crawler.line((x,248,x+2,245,x+1,242),fill=4)
+        crawler.line((x-1,247,x+1,248),fill=6)
+    crawler.polygon(((25,247),(29,246),(31,249),(28,252),(25,251)),fill=1,outline=2)
+    crawler.point((27,248),fill=11);crawler.point((30,249),fill=11)
+    crawler.line((27,251,29,251),fill=15)
     tiles,_=tile_image(sheet,False)
     (OUT/'sprites.chr').write_bytes(tiles); sheet.convert('RGB').save(OUT/'sprites.png')
+    from build_npcs import build as build_npcs
+    npc_far=build_npcs(OUT,assembly,sheet)
+    from build_backdrop import build as build_backdrop
+    build_backdrop(OUT,assembly)
+    from build_scenery import build as build_scenery
+    build_scenery(OUT,assembly,sheet,npc_far)
     torch=sheet.crop((0,80,128,96))
     rgba=torch.convert('RGBA')
     mask=Image.new('L',torch.size)
@@ -480,6 +489,8 @@ def main():
     build_hero(OUT,assembly)
     from build_bow import build as build_bow
     build_bow(OUT,assembly)
+    from build_interactions import build as build_interactions
+    build_interactions(OUT,assembly)
     from build_daycycle import build as build_daycycle
     build_daycycle(OUT,assembly)
     from build_torch import build as build_torch

@@ -10,6 +10,7 @@ static SkU8 old_lamp = 0, old_room = 0, old_runes = 0, cooldown = 0;
 static SkU16 previous_tick = 0;
 static SkU8 old_time_phase = TIME_DAY;
 static SkU8 old_bow_cooldown = 0;
+static SkU8 old_hurt = 0, old_shove = 0, old_impact = 0;
 static SkU16 old_kills = 0;
 void audio_init(void) {
     spcBoot();
@@ -25,14 +26,24 @@ void audio_init(void) {
     spcSetSoundTableEntry(&sounds[0]);
 }
 void audio_update(const Game *g) {
+    SkU8 i, impact = 0;
+    if (g->arrows[0].life || g->arrows[1].life || g->arrows[2].life)
+        for (i = 0; i < COMBAT_ARROWS; ++i)
+            if (g->arrows[i].life && !g->arrows[i].damage) impact = 1;
     if (cooldown)
         --cooldown;
-    if (g->bow_cooldown == 24 && old_bow_cooldown != 24) {
+    if (g->bow_cooldown > old_bow_cooldown) {
         spcPlaySound(4);
         cooldown = 18;
-    } else if (g->kills > old_kills) {
+    } else if (g->kills > old_kills || (impact && !old_impact)) {
         spcPlaySound(5);
         cooldown = 18;
+    } else if (g->hurt_timer > old_hurt) {
+        spcPlaySound(0);
+        cooldown = 18;
+    } else if (g->shove_cooldown > old_shove) {
+        spcPlaySound(1);
+        cooldown = 12;
     } else if (g->lamp != old_lamp) {
         spcPlaySound(1);
         cooldown = 18;
@@ -54,5 +65,8 @@ void audio_update(const Game *g) {
     old_time_phase = g->time_phase;
     old_bow_cooldown = g->bow_cooldown;
     old_kills = g->kills;
+    old_hurt = g->hurt_timer;
+    old_shove = g->shove_cooldown;
+    old_impact = impact;
     spcProcess();
 }

@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 
 from libretro import Emulator, ROOT
-from rom_smoke import Runner
+from rom_smoke import Runner, world_cut
 
 
 def run(core, pal=False, allow_cadence_drops=False):
@@ -46,7 +46,7 @@ def run(core, pal=False, allow_cadence_drops=False):
         s = e.state()
         if s['room'] == 1 and s['sun_level'] == 0:
             pixels = np.asarray(e.frame)
-            cut = 200 if s['bow_mode'] or s['time_notice'] else 224
+            cut = world_cut(s)
             cy = 145 if s['bow_mode'] else ((125, 126, 127, 126)[(s['direction'] >> 1) & 3])
             cx = 106 if s['bow_mode'] else ((119, 140, 136, 116)[(s['direction'] >> 1) & 3])
             yy, xx = np.ogrid[:cut-1, :256]
@@ -162,6 +162,30 @@ def run(core, pal=False, allow_cadence_drops=False):
         # Releasing a valid Scope click must finish drawing and release an
         # arrow while later-night crawlers press through the fire.
         r.walk(128, 174)
+        e.wait_state(lambda s: not s['shove_cooldown'], 'Shove recovery before enemy check')
+        telegraph = e.wait_state(
+            lambda s: any(x['hp'] and x['kind'] and x['state'] == 1 for x in s['enemies']),
+            'Crawler never telegraphed an attack', limit=600)
+        target_index = next(i for i, x in enumerate(telegraph['enemies'])
+                            if x['hp'] and x['kind'] and x['state'] == 1)
+        target = telegraph['enemies'][target_index]
+        capture('crawler-windup')
+        oam = C.string_at(e.memory + oam_address, 544)
+        assert oam[(72+target_index)*4+1] != 240, 'Windup warning is absent from OAM'
+        dx, dy = target['x']-telegraph['x'], target['y']-telegraph['y']
+        facing = set()
+        if abs(dx)*2 >= abs(dy) and dx:
+            facing.add(7 if dx > 0 else 6)
+        if abs(dy)*2 >= abs(dx) and dy:
+            facing.add(5 if dy > 0 else 4)
+        before_ammo = e.state()['ammo']
+        e.buttons = facing | {11}
+        e.wait_state(lambda s: s['shove_cooldown'] and
+                     s['enemies'][target_index]['state'] == 3 and
+                     s['enemies'][target_index]['hit'], 'R did not interrupt the crawler', limit=8)
+        e.buttons = set()
+        assert e.state()['ammo'] == before_ammo and e.state()['enemies'][target_index]['hp'] == target['hp']
+        capture('crawler-interrupted')
         e.tap(10)
         start_kills = e.state()['kills']
         shots = 0
@@ -197,7 +221,8 @@ def run(core, pal=False, allow_cadence_drops=False):
                   'rom_sha256': json.loads((ROOT / 'build/link_manifest.json').read_text())['rom_sha256'],
                   'checks': ['four successive dusks', 'safe chapel', 'repeated resource refill',
                              'four live actors', 'two tough crawlers', 'four OAM actors',
-                             'night clipping', 'live audio', 'four projectile kills'],
+                             'night clipping', 'live audio', 'crawler telegraph OAM',
+                             'R interrupts crawler without ammo or damage', 'four projectile kills'],
                   'dusks': dusks, 'refills': refills, 'frames': e.frames, 'shots': shots,
                   'cadence': cadence, 'final_state': e.state()}
         (ROOT / 'build' / ('survival-regression-' + region + '.json')).write_text(

@@ -83,11 +83,17 @@ enum TimePhase { TIME_NIGHT, TIME_DAWN, TIME_DAY, TIME_DUSK };
 #define COMBAT_ARROWS 3
 #define BOW_AMMO_MAX 24
 #define BOW_DRAW_TICKS 18
+#define BOW_MIN_DRAW 6
+#define BOW_COOLDOWN 24
+#define SHOVE_COOLDOWN 60
+enum EnemyKind { ENEMY_SHADE, ENEMY_CRAWLER };
+enum EnemyState { ENEMY_HUNT, ENEMY_WINDUP, ENEMY_LUNGE, ENEMY_RECOVER };
 typedef struct {
     SkS16 x, y;
     SkU8 hp, hit, kind, attack;
     SkU16 respawn;
-    SkU8 step, reserved;
+    /* step stores the locked eight-way direction during windup/lunge. */
+    SkU8 step, state;
 } Enemy;
 typedef struct {
     /* Quarter-world-unit coordinates; velocity uses the same units. */
@@ -115,13 +121,15 @@ typedef struct {
     SkU8 memories, echo_charge, wards, bell_step, ward_timer, text_delay;
     SkU16 day_seconds, day_number;
     SkU8 sun_level, time_phase, time_notice;
-    SkU8 clock_reserved;
+    SkU8 enemy_slots; /* Cached population limit; uses the old padding byte. */
     SkU16 nights, kills;
     SkU8 bow_mode, bow_draw, bow_cooldown, bow_direction;
     SkU8 ammo, shot_request, combat_notice, combat_notice_ticks;
     SkS16 aim_x, aim_y;
     Enemy enemies[COMBAT_ENEMIES];
     Arrow arrows[COMBAT_ARROWS];
+    SkU8 notice_ticks, focus;
+    SkU8 hurt_timer, shove_cooldown;
 } Game;
 #define TORCH_RADIUS 64
 #define CORRIDOR_START 80

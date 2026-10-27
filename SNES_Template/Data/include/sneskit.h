@@ -27,7 +27,8 @@ enum SkButton {
     SK_AIM = 256,
     SK_JOURNAL = 512,
     SK_BACK = 1024,
-    SK_TURN_LEFT = 2048
+    SK_TURN_LEFT = 2048,
+    SK_SHOVE = 4096
 };
 
 typedef struct {

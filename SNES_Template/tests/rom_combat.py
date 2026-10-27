@@ -13,7 +13,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from libretro import Emulator, ROOT
-from rom_smoke import Runner, daylight
+from rom_smoke import Runner, daylight, world_cut
 
 
 def run(core, pal=False):
@@ -30,7 +30,7 @@ def run(core, pal=False):
         im = e.frame.copy()
         assert im.size == (256, 224)
         s = e.state()
-        cut = 200 if s['time_notice'] or s['bow_mode'] else 224
+        cut = world_cut(s)
         pixels = np.asarray(im)[:cut - 1]
         if s['mode'] == 3 and not daylight(s) and s['lamp'] and s['oil']:
             cx, cy = (106, 145) if s['bow_mode'] else (
@@ -49,7 +49,7 @@ def run(core, pal=False):
         e.run(120)
         after = e.state()
         for field in ('arrows', 'enemies', 'ammo', 'bow_draw', 'bow_cooldown',
-                      'day_seconds', 'nights', 'kills'):
+                      'day_seconds', 'nights', 'kills', 'hurt_timer', 'shove_cooldown'):
             assert after[field] == before[field], ('Combat advanced on pause', field, before, after)
 
     try:
@@ -78,11 +78,20 @@ def run(core, pal=False):
                              for name in ('ready', 'half-draw', 'full-draw')]
         assert np.count_nonzero(np.any(ready != full, axis=2)) > 20, 'Bow stance never changed'
         assert np.count_nonzero(np.any(half != full, axis=2)) > 8, 'Half/full draw use one pose'
+        half_hud, full_hud = [np.asarray(dict(shots)[name])[200:208]
+                              for name in ('half-draw', 'full-draw')]
+        assert np.count_nonzero(np.any(half_hud != full_hud, axis=2)) > 8, 'Charge meter did not advance'
         assert e.state()['ammo'] == 24 and e.state()['interactions'] == serial
         e.buttons = set()
         e.wait_state(lambda s: s['ammo'] == 23, 'Pad release must launch one arrow')
         capture('release')
         assert any(a['life'] and a['damage'] for a in e.state()['arrows'])
+        # R is a real controller edge, independent of Scope TURBO/aim hold.
+        e.buttons = {11}
+        e.wait_state(lambda s: s['shove_cooldown'] > 48, 'R did not trigger a shove')
+        assert e.state()['ammo'] == 23 and not e.state()['bow_draw']
+        capture('shove')
+        e.buttons = set()
         e.tap(3)
         e.wait_mode(7)
         frozen()
@@ -168,7 +177,8 @@ def run(core, pal=False):
         report = {'region': region.upper(),
                   'rom_sha256': json.loads((ROOT / 'build/link_manifest.json').read_text())['rom_sha256'],
                   'checks': ['cancelled draw', 'stationary bow aim', 'half/full/release poses',
-                             'pad arrow', 'projectile pause', 'quiver refill', 'first night creature',
+                             'charge meter', 'R shove', 'pad arrow', 'projectile and shove pause',
+                             'quiver refill', 'first night creature',
                              'planted torch darkness', 'offscreen Scope rejected',
                              'Scope torso hit', 'projectile kill', 'delayed respawn'],
                   'frames': e.frames, 'impact_seen': impact_seen, 'final_state': e.state()}

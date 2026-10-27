@@ -9,6 +9,7 @@
 #define BOW_ARROW_TILE 64
 #define BOW_IMPACT_TILE 74
 #define BOW_MARKER_TILE 78
+#define BOW_STATUS_COUNT 8
 enum HeroGripField { HERO_LEFT_X, HERO_LEFT_Y, HERO_RIGHT_X, HERO_RIGHT_Y };
 /* Frame-major attachment coordinates; four fields per selected pose. */
 extern const SkU8 hero_grips[HERO_FRAME_COUNT * 4];

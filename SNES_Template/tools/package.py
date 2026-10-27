@@ -14,6 +14,9 @@ def main():
     (dist/'chernorechye.sfc').write_bytes(rom)
     (dist/'sha256.txt').write_text(hashlib.sha256(rom).hexdigest()+'  chernorechye.sfc\n')
     records=[json.loads(p.read_text()) for p in sorted((ROOT/'build').glob('rom-*.json'))]
+    native_proof=ROOT/'build/bsnes-backdrop-regression.json'
+    if native_proof.exists() and json.loads(native_proof.read_text()).get('rom_sha256')!=hashlib.sha256(rom).hexdigest():
+        raise ValueError('Native bsnes backdrop proof belongs to another ROM')
     expected={('NTSC','gamepad','good'),('NTSC','gamepad','bad'),('NTSC','gamepad','secret'),
         ('PAL','gamepad','good'),('PAL','gamepad','secret'),('NTSC','Super Scope','good'),
         ('PAL','Super Scope','good'),('NTSC','Super Scope','secret')}
@@ -21,16 +24,23 @@ def main():
     if actual!=expected or len(records)!=8: raise ValueError('Eight distinct ROM checks are required')
     if any(r.get('rom_sha256')!=hashlib.sha256(rom).hexdigest() for r in records):
         raise ValueError('Reports belong to another ROM build; run checks again')
-    for feature in ('scope','hero','torch','daycycle','combat','survival'):
+    for feature in ('scope','hero','torch','daycycle','combat','survival','interaction','locations'):
         for region in ('ntsc','pal'):
             report=json.loads((ROOT/'build'/('%s-regression-%s.json'%(feature,region))).read_text())
             if report.get('rom_sha256')!=hashlib.sha256(rom).hexdigest():
                 raise ValueError('Feature regression belongs to another ROM: '+feature+' '+region)
+            if feature=='survival':
+                cadence=report['cadence']
+                if (cadence['updates']<300 or cadence['max_vblank_gap']>2 or
+                    cadence['audio_peak']<=0 or cadence['max_population']!=4 or
+                    abs(cadence['logical_ticks']-cadence['expected_logical_ticks'])>4):
+                    raise ValueError('Four-night survival budget failed: '+region)
     for suffix in ('','-pal'):
         report=json.loads((ROOT/'build'/('profile-optimized'+suffix+'.json')).read_text())
         if report.get('rom_sha256')!=hashlib.sha256(rom).hexdigest():
             raise ValueError('Cadence profile belongs to another ROM: '+suffix)
-        if len(report['cadence'])!=7 or any(r['updates']!=600 or r['max_vblank_gap']!=1
+        if len(report['cadence'])!=8 or any(r['updates']<(300 if r['scenario'] in ('village-walk','forest-walk','cellar-walk') else 600)
+                or r['max_vblank_gap']>(2 if r['scenario'] in ('village-walk','forest-walk','cellar-walk') else 1)
                 or (r.get('heartbeat_expected',True) and r['audio_peak']<=0) for r in report['cadence']):
             raise ValueError('Cadence/audio regression failed: '+suffix)
     lines=['# Проверка финальной сборки','',
@@ -53,7 +63,7 @@ def main():
         'Расширенная секретная ветка проверяет три следа памяти, колокольную',
         'загадку и расход серебра; native tests также проверяют обратные пути.',
         'JSON-отчёты и кадры приложены в build/.',
-        'Дополнительно прошли двенадцать регрессий героя, факела, Scope, суток, боя и выживания в PAL/NTSC.',
+        'Дополнительно прошли шестнадцать регрессий героя, факела, Scope, суток, боя, выживания, взаимодействий и локаций в PAL/NTSC.',
         'Лук проверен натяжением и отпусканием A, обычным кликом Scope,',
         'физическим полётом стрелы, попаданием в тело и гибелью врага.',
         'Проверены препятствия, отсутствие урона NPC, конечный боезапас,',
@@ -70,26 +80,44 @@ def main():
         'Scope: первый клик, отпускание кнопок, калибровка, TURBO, попадание в торс',
         'и отбрасывание невалидного FIRE проходят регрессии.',
         'Декоративные деревья больше не перехватывают клики по земле.',
-        'Семь сценариев в каждом регионе дают 600 обновлений на 600 кадров;',
-        'в тёмных фазах отдельно проверен ненулевой звук SPC.',
+        'Восемь сценариев в каждом регионе проверены по бюджету кадров.',
+        'Неподвижные сцены, повороты на месте и часовня обновляются каждый кадр;',
+        'для плотной деревни, леса и подземелья допускается до двух VBlank.',
+        'Насыщенная сцена с четырьмя врагами также укладывается в два VBlank;',
+        'независимо проверены 60 логических тактов в секунду и живой звук SPC.',
         'Вступление из пяти экранов проверено кнопками; кадры спортзала,',
         'подвала и отражения сняты из самой ROM.',
         'Свет следует за огнём в левой руке, имеет яркий центр, тёплое кольцо',
         'и четыре фазы мерцания на направление;',
         'внешний радиус — 77..79 экранных пикселей. Ночью за кругом нет тусклого слоя.',
-        'Материалы Mode 7 укладываются в 184 / 252 / 39 / 37 тайлов из 256.','',
+        'Материалы каждой карты Mode 7 проверены на предел 256 тайлов.',
+        'Первые две локации имеют новые тропы, брод, двор, 64×64 избы и 32×64 ели.',
+        'Смена глубины сохраняет несколько заранее подготовленных размеров декораций.',
+        'Проверены дневной/ночной свет и восстановление полного атласа вступления.','',
+        'Пять жителей получили спрайты 32×48, дыхание и моргание.',
+        'Дневной дальний фон Mode1 имеет три скорости прокрутки; земля остаётся Mode7.',
+        'Панорама занимает свободные 8 KiB VRAM, не расходуя OBJ; ночью фон выключен.','',
         'Физическая SNES, настоящий Super Scope/CRT, macOS и пользовательская',
         'длительность прохождения не проверены. Это прототип с',
         'новой графикой и шестью эффектами, без озвучки, полной музыки и SRAM.']
     memory=json.loads((ROOT/'build/memory.json').read_text())
     lines+=['', 'Статика платформы/ядра: %d B; initialized content: %d B.'%
             (memory['project_static_bytes'],memory['initialized_content_bytes']),
-        'Всего проектной WRAM: %d B без SDK/стека/APU; Game: 148 B.'%memory['total_project_wram_bytes'],
+        'Всего проектной WRAM: %d B без SDK/стека/APU; Game: 150 B.'%memory['total_project_wram_bytes'],
         'Текстовый буфер: 1792 B; старые Mode 1 HDMA-буферы: 532 B.',
         'Таблицы света Mode 7 в ROM: %d B.'%memory['torch_table_bytes'],
         'Палитры суток и готовые уведомления в ROM: %d B.'%memory['daycycle_rom_bytes'],
         'Боевые позы: 16384 B ROM; атлас стрел: 1024 B; панели лука: 9600 B.',
+        'Контекстные подписи и сообщения действий проверены подходами сбоку к старосте и серебру;',
+        'маршрут кнопкой A проходит деревню, лес, часовню и подземелье.',
+        'Подсказки показывают порядок знаков и недостающие условия прямо в исследовании.',
         'Профили PAL/NTSC приложены в build/profile-*.json.']
+    lines+=['','| Регион | Сценарий | Обновления / 600 кадров | Макс. VBlank |',
+            '|---|---|---:|---:|']
+    for suffix in ('','-pal'):
+        profile=json.loads((ROOT/'build'/('profile-optimized'+suffix+'.json')).read_text())
+        for row in profile['cadence']:
+            lines.append('| %s | %s | %d | %d |'%(profile['region'],row['scenario'],row['updates'],row['max_vblank_gap']))
     proof=ROOT/'build/reproducibility.json'
     if proof.is_file():
         evidence=json.loads(proof.read_text())

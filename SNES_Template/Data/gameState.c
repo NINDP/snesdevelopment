@@ -40,7 +40,7 @@ static SkInput read_input(void) {
     map_button(&in, pad, edge, KEY_B, SK_BACK);
     map_button(&in, pad, edge, KEY_X, SK_LIGHT);
     map_button(&in, pad, edge, KEY_Y, SK_JOURNAL);
-    map_button(&in, pad, edge, KEY_R, SK_AIM);
+    map_button(&in, pad, edge, KEY_R, SK_AIM | SK_SHOVE);
     map_button(&in, pad, edge, KEY_L, SK_TURN_LEFT);
     map_button(&in, pad, edge, KEY_START, SK_PAUSE);
 

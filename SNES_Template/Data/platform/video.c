@@ -16,7 +16,11 @@ extern u8 cine1_tiles, cine1_tiles_end, cine1_map, cine1_palette;
 extern u8 cine2_tiles, cine2_tiles_end, cine2_map, cine2_palette;
 extern u8 sprite_tiles, sprite_tiles_end, sprite_palette, bg_palette, font_tiles, font_tiles_end;
 extern u8 daycycle_notices;
-extern u8 bow_hud_maps;
+extern u8 bow_hud_maps, bow_status_maps;
+static SkU8 bow_status_cache = 255;
+extern u8 interaction0_maps, interaction1_maps, interaction2_maps, interaction3_maps;
+extern u8 interaction_notice_maps;
+static u8 *context_maps;
 /* UI buckets live in ROM, avoiding 65C816 software division per draw. */
 static const SkU8 bucket5[121] = {
     0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  2,  2,  2,  2,  2,  3,  3,  3,  3,  3,  4,
@@ -250,7 +254,7 @@ void video_init(void) {
 void video_commit(void) {
     if (dirty) {
         if (banner_dirty)
-            dmaCopyVram((u8 *)text_map + 25 * 64, VIDEO_TEXT_MAP + 25 * 32, 3 * 64);
+            dmaCopyVram((u8 *)text_map + 24 * 64, VIDEO_TEXT_MAP + 24 * 32, 4 * 64);
         else
             dmaCopyVram((u8 *)text_map, VIDEO_TEXT_MAP, sizeof(text_map));
         dirty = 0;
@@ -289,6 +293,18 @@ static const char *notice_text(SkU8 notice) {
         return TXT_WARD_NEED;
     case 11:
         return TXT_BELL_WRONG;
+    case 12: return TXT_FOREST_DONE;
+    case 13: return TXT_SIGN_ONE;
+    case 14: return TXT_SIGN_TWO;
+    case 15: return TXT_RUNE_DONE;
+    case 16: return TXT_TABLE_DONE;
+    case 17: return TXT_APPROACH;
+    case 18: return TXT_TABLE_NEED;
+    case 19: return TXT_TOKEN_NEED;
+    case 20: return TXT_MIRO_NEED;
+    case 21: return TXT_SIGN_ORDER;
+    case 22: return TXT_RUNE_WAIT;
+    case 23: return TXT_RUNES_NEED;
     default:
         return 0;
     }
@@ -375,37 +391,52 @@ static void draw_torch(const Game *g) {
     }
 }
 void video_draw(const Game *g, SkU8 scope) {
-    SkU8 i, bg, near, changed, world, cinematic, corridor, projected, cut;
+    SkU8 i, bg, near, changed, world, cinematic, corridor, projected, cut, bow_status;
     SkU16 keys[10];
     const StoryLine *line;
     calibration_stage = 255;
     if (g->mode == G_EXPLORE) {
         if (current_bg != 10 + g->room) {
             hide();
-            perspective_enter(g->room);
+            perspective_enter(g);
             current_bg = 10 + g->room;
             memset(last_keys, 255, sizeof(last_keys));
             time_banner = 255;
+            context_maps = g->room == 0 ? &interaction0_maps :
+                (g->room == 1 ? &interaction1_maps : (g->room == 2 ? &interaction2_maps : &interaction3_maps));
         }
         perspective_draw(g);
-        i = g->time_notice ? g->time_phase :
-            (g->bow_mode ? 32 + g->ammo + (scope ? 25 : 0) : 254);
-        if (i != time_banner) {
+        i = g->notice_ticks && g->notice ? 160 + g->notice :
+            (g->time_notice ? g->time_phase : (g->bow_mode ? 32 + g->ammo + (scope ? 25 : 0) :
+            (g->focus != SK_NONE ? 96 + (g->room << 4) + g->focus : 254)));
+        bow_status = 0;
+        if (g->bow_mode) bow_status = !g->ammo ? 7 : (g->hurt_timer > 32 ? 6 :
+            (g->shove_cooldown > SHOVE_COOLDOWN - 12 ? 5 : (g->bow_cooldown ? 4 :
+            (g->bow_draw >= BOW_DRAW_TICKS ? 3 : (g->bow_draw >= 12 ? 2 :
+            (g->bow_draw >= BOW_MIN_DRAW ? 1 : 0))))));
+        if (i != time_banner || (g->bow_mode && i >= 32 && i < 82 && bow_status != bow_status_cache)) {
             banner_dirty = !dirty && time_banner != 255;
             /* Only entry from a full-screen menu needs a full clear. Live
                phase changes copy three prebuilt rows to fit the frame. */
             if (time_banner == 255)
                 memset(text_map, 0, sizeof(text_map));
-            else if (i == 254)
-                memset(text_map + 25 * 32, 0, 3 * 64);
+            else
+                memset(text_map + 24 * 32, 0, 4 * 64);
             time_banner = i;
             dirty = 1;
-            if (g->time_notice)
+            if (i >= 160 && i < 192)
+                memcpy(text_map + 24 * 32, &interaction_notice_maps + ((SkU16)g->notice << 8), 4 * 64);
+            else if (i >= 96 && i < 160)
+                memcpy(text_map + 24 * 32, context_maps + ((SkU16)g->focus << 8), 4 * 64);
+            else if (g->time_notice)
                 memcpy(text_map + 25 * 32, &daycycle_notices + (SkU16)g->time_phase * 192, 3 * 64);
-            else if (g->bow_mode)
+            else if (g->bow_mode) {
                 memcpy(text_map + 25 * 32, &bow_hud_maps + (SkU16)(i - 32) * 192, 3 * 64);
+                memcpy(text_map + 25 * 32, &bow_status_maps + ((SkU16)bow_status << 6), 64);
+            }
+            bow_status_cache = bow_status;
         }
-        perspective_overlay(g->time_notice || g->bow_mode ? 200 : 224);
+        perspective_overlay(i >= 96 && i < 192 ? 192 : (i != 254 ? 200 : 224));
         return;
     }
     time_banner = 255;
@@ -454,7 +485,7 @@ void video_draw(const Game *g, SkU8 scope) {
     if (projected) {
         if (current_bg != 10 + g->room) {
             hide();
-            perspective_enter(g->room);
+            perspective_enter(g);
             current_bg = 10 + g->room;
         }
         cut = g->mode == G_DIALOGUE ? 128 : (g->mode == G_CHOICE ? 88 : 64);

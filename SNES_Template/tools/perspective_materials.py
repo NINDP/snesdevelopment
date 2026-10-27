@@ -30,6 +30,177 @@ COLORS = [
     # Faded cloth and quiet ceremonial markings.
     (46, 28, 25), (61, 35, 28), (77, 46, 33), (90, 60, 39),
 ]
+COLORS += [(20,35,24),(27,45,28),(37,55,31),(48,67,35),(61,78,42),(73,87,48),
+           (50,40,28),(62,50,34),(75,62,42),(88,73,51),(31,29,24),(41,36,27),
+           (63,62,49),(80,77,60),(98,89,66),(14,28,33),(21,38,43),(29,48,51),
+           (43,61,60),(45,30,21),(59,42,25),(77,56,32)]
+
+
+def outdoor_tile(kind,variant,edge=0):
+    """A small texture vocabulary plus reusable shoreline/path autotiles."""
+    rng=random.Random(703+variant*97+sum(map(ord,kind)))
+    im=indexed((8,8));d=ImageDraw.Draw(im)
+    if kind in ('grass','forest'):
+        im.paste(37 if kind=='grass' else 36,(0,0,8,8))
+        for _ in range(3):
+            x,y=rng.randrange(1,7),rng.randrange(1,7)
+            d.line((x,y+1,x+1,y-1),fill=38)
+            d.point((x+2,y+1),fill=39 if kind=='grass' else 37)
+        if kind=='forest':
+            d.line((1,5,3,6,4,5),fill=55);d.point((3,5),fill=56)
+            if variant==1:d.line((5,1,6,2),fill=57)
+    elif kind in ('path','earth','mud','gravel'):
+        base={'path':43,'earth':3,'mud':46,'gravel':24}[kind]
+        im.paste(base,(0,0,8,8))
+        for _ in range(3):
+            x,y=rng.randrange(6),rng.randrange(8)
+            d.line((x,y,x+2,y),fill=base-1 if kind!='mud' else 47)
+        if kind in ('path','gravel') and variant==3:
+            d.line((3,3,4,3),fill=49);d.point((4,4),fill=48)
+        if kind=='gravel':d.line((0,7,7,7),fill=23);d.line((7,0,7,6),fill=23)
+    elif kind=='water':
+        im.paste(51,(0,0,8,8));d.line((1,2,5,2),fill=52)
+        if variant==1:d.line((3,5,7,4),fill=53)
+    elif kind=='bridge':
+        im.paste(18,(0,0,8,8));d.line((0,7,7,7),fill=16);d.line((0,0,7,0),fill=20)
+        d.line((2,3,5,3,6,4),fill=17);d.point((1,2),fill=21);d.point((6,5),fill=16)
+    elif kind=='crops':
+        im.paste(3,(0,0,8,8))
+        d.line((0,2,7,2),fill=2);d.line((0,6,7,6),fill=2)
+        for x,y in ((1,1),(5,1),(3,5),(7,5)):
+            d.line((x,y+1,x,y-1),fill=40);d.line((x-1,y,x+1,y),fill=41)
+    elif kind in ('bracken','roots','leaves','flowers'):
+        im.paste(37 if kind=='flowers' else 36,(0,0,8,8))
+        if kind=='roots':
+            d.line((0,3,3,4,5,6,7,6),fill=55,width=2)
+            d.line((1,3,4,4,6,6),fill=56);d.line((3,4,5,1,7,0),fill=55)
+        elif kind=='bracken':
+            for x,y in ((2,3),(6,6)):
+                d.line((x,y+2,x,y-2),fill=39)
+                d.line((x-2,y-1,x,y+1,x+2,y-1),fill=40)
+                d.point((x-1,y-2),fill=41)
+        elif kind=='leaves':
+            for x,y in ((1,2),(5,1),(3,6),(7,5)):
+                d.line((x,y,x+1,y+1),fill=56 if variant&1 else 57)
+                d.point((x+1,y),fill=55)
+        else:
+            for x,y in ((2,3),(6,5)):
+                d.point((x,y),fill=15);d.point((x,y+1),fill=41)
+    elif kind=='tracks':
+        im.paste(43,(0,0,8,8))
+        d.line((1,0,1,7),fill=42);d.line((6,0,6,7),fill=42)
+        if variant&1:d.line((2,3,3,3),fill=46)
+    elif kind=='logs':
+        im.paste(3,(0,0,8,8))
+        for y in (1,5):
+            d.line((0,y,7,y),fill=17,width=3);d.line((0,y-1,7,y-1),fill=21)
+            d.line((1,y,5,y),fill=19)
+    elif kind=='cobbles':
+        im.paste(23,(0,0,8,8))
+        for box in ((1,0,6,3),(-2,5,2,7),(4,5,8,7)):
+            d.rounded_rectangle(box,1,fill=25,outline=24)
+            d.point((box[0]+1,box[1]),fill=27)
+    elif kind=='ruin':
+        im.paste(36,(0,0,8,8))
+        d.polygon(((1,2),(5,1),(7,4),(5,6),(1,6)),fill=24,outline=23)
+        d.line((2,2,5,2),fill=26);d.line((1,7,3,7),fill=39)
+    elif kind=='embers':
+        im.paste(2,(0,0,8,8));d.line((1,2,6,5),fill=16,width=2)
+        d.line((2,5,6,1),fill=17,width=2);d.point((3,3),fill=33)
+    else:raise ValueError(kind)
+    if edge:
+        bank=46 if kind=='water' else (37 if kind=='path' else 36)
+        for side,bit in enumerate((1,2,4,8)):
+            if not edge&bit:continue
+            for p in range(8):
+                depth=1+(p in (0,3,6))
+                for q in range(depth):
+                    x,y=((p,q),(7-q,p),(p,7-q),(q,p))[side]
+                    d.point((x,y),fill=bank)
+    return im
+
+
+def outdoor_ground(room):
+    """Authored village/ford layout; textures stay flat in world space."""
+    base='grass' if room==0 else 'forest'
+    grid=[[base for _ in range(32)] for _ in range(28)]
+    def paint(kind,mask):
+        for y in range(28):
+            for x in range(32):
+                if not mask.getpixel((x*8+4,y*8+4)):continue
+                if kind in ('bracken','roots','leaves','flowers') and grid[y][x] not in ('grass','forest'):
+                    continue
+                grid[y][x]=kind
+    def region(kind,polygon=None,box=None):
+        mask,d=mask_image()
+        if polygon:d.polygon(polygon,fill=255)
+        if box:d.rectangle(box,fill=255)
+        paint(kind,mask)
+    def trail(points,width):paint('path',trail_mask(points,width))
+    if room==0:
+        region('earth',polygon=[(24,76),(72,64),(108,96),(172,90),(220,116),
+                               (244,156),(192,176),(96,184),(48,168),(16,128)])
+        # A courtyard and two homesteads face the road; the creek is behind.
+        region('gravel',box=(16,48,80,80));region('gravel',box=(160,48,232,80))
+        region('water',polygon=[(96,0),(144,0),(144,40),(136,64),(120,80),(96,64)])
+        region('mud',box=(88,48,104,72));region('bridge',box=(112,24,128,80))
+        trail([(120,184),(120,152),(104,120),(56,80)],24)
+        trail([(112,144),(160,144),(192,112)],20)
+        trail([(120,152),(184,152),(248,152)],22)
+        trail([(96,144),(32,144)],14)
+        region('gravel',box=(136,120,160,144))
+        region('mud',box=(24,136,40,160))
+        # Kitchen plots, wheel ruts, stacked timber and a worn common yard.
+        region('crops',box=(0,104,40,128));region('crops',box=(192,168,240,208))
+        region('crops',box=(40,184,88,208))
+        region('cobbles',box=(128,120,160,144))
+        region('logs',box=(8,80,40,88));region('logs',box=(200,80,224,88))
+        region('tracks',box=(176,128,240,144))
+        region('flowers',box=(64,64,80,80));region('flowers',box=(168,64,184,80))
+        region('leaves',box=(0,160,16,208));region('leaves',box=(88,32,104,48))
+    else:
+        region('earth',polygon=[(56,224),(40,168),(48,120),(72,104),(88,72),
+                               (120,48),(176,64),(208,96),(240,128),(224,168),(168,192),(112,224)])
+        region('water',polygon=[(0,64),(12,72),(24,96),(24,112),(40,136),
+                               (32,160),(16,176),(8,208),(0,224)])
+        region('mud',polygon=[(16,96),(32,112),(48,136),(40,160),(24,176),(16,176),(24,144)])
+        trail([(128,184),(128,160),(88,144),(56,112),(64,96)],20)
+        trail([(88,144),(28,144)],16)
+        trail([(64,96),(88,80),(116,60)],14)
+        trail([(116,60),(152,80),(184,76)],14)
+        trail([(128,160),(168,136),(208,144)],16)
+        trail([(168,136),(176,112),(208,112),(240,104)],16)
+        trail([(56,112),(32,72),(12,40)],12)
+        region('bridge',box=(16,136,56,152))
+        region('gravel',box=(112,152,136,176))
+        # Understorey forms beds at the tree line, with a disturbed camp at
+        # the ford and pieces of an old paved approach to the chapel.
+        for box in ((0,0,72,56),(208,0,256,80),(80,184,112,224),
+                    (216,168,256,224),(40,72,56,96),(144,32,168,56)):
+            region('bracken',box=box)
+        for box in ((40,40,64,64),(208,48,232,64),(0,112,16,136),
+                    (232,88,256,104),(112,192,152,208)):
+            region('roots',box=box)
+        for box in ((72,96,88,120),(160,152,184,176),(176,48,200,64),
+                    (48,168,72,192),(120,88,144,104)):
+            region('leaves',box=box)
+        region('logs',box=(40,152,64,160));region('embers',box=(56,128,72,136))
+        region('ruin',box=(192,112,224,128));region('ruin',box=(112,48,128,64))
+    im=indexed();cache={}
+    for y,row in enumerate(grid):
+        for x,kind in enumerate(row):
+            edge=0
+            if kind in ('path','water'):
+                for side,(dx,dy) in enumerate(((0,-1),(1,0),(0,1),(-1,0))):
+                    xx,yy=x+dx,y+dy
+                    other=grid[yy][xx] if 0<=xx<32 and 0<=yy<28 else kind
+                    if (kind=='water' and other!='water') or (kind=='path' and other in ('grass','forest')):
+                        edge|=1<<side
+            variant=(x*3+y*5+(x//4))%4
+            key=(kind,variant,edge)
+            if key not in cache:cache[key]=outdoor_tile(*key)
+            im.paste(cache[key],(x*8,y*8))
+    return im
 
 
 def indexed(size=SIZE, fill=1):
@@ -150,53 +321,8 @@ def trail_mask(points, width):
 
 
 def build_ground(room):
-    if room == 0:
-        im = tile_material('soil')
-        # Moss survives around the edges of the yard; foot traffic joins the
-        # elder, Egor, oil supply and the forest exit through compacted earth.
-        mask, d = mask_image()
-        d.polygon([(0, 0), (256, 0), (256, 80), (224, 72), (208, 40),
-                   (80, 40), (64, 112), (0, 120)], fill=255)
-        d.rectangle((0, 184, 255, 223), fill=255)
-        overlay(im, 'moss', mask)
-        path = trail_mask([(52, 78), (100, 104), (120, 148), (176, 148), (248, 152)], 24)
-        pd = ImageDraw.Draw(path)
-        pd.line((120, 140, 168, 112, 192, 112), fill=255, width=18)
-        pd.line((108, 144, 28, 146), fill=255, width=15)
-        overlay(im, 'path', path)
-        mask, d = mask_image()
-        for box in ((16, 40, 79, 71), (160, 40, 231, 71)):
-            d.rectangle(box, fill=255)
-        overlay(im, 'foundation', mask)
-        mask, d = mask_image()
-        d.rectangle((96, 0, 143, 63), fill=255)
-        overlay(im, 'water', mask)
-        mask, d = mask_image()
-        d.rectangle((112, 32, 127, 79), fill=255)
-        overlay(im, 'bridge', mask)
-    elif room == 1:
-        im = tile_material('moss')
-        mask, d = mask_image()
-        d.polygon([(32, 224), (24, 144), (48, 104), (88, 80), (104, 32),
-                   (144, 24), (184, 64), (224, 96), (248, 120), (224, 176),
-                   (160, 192), (112, 224)], fill=255)
-        overlay(im, 'soil', mask)
-        overlay(im, 'path', trail_mask([(12, 40), (52, 112), (80, 132),
-                                       (116, 60), (168, 116), (208, 144),
-                                       (240, 102)], 14))
-        mask, d = mask_image()
-        d.polygon([(0, 0), (32, 0), (32, 96), (40, 120), (32, 152), (0, 160)], fill=255)
-        overlay(im, 'water', mask)
-        mask, d = mask_image()
-        d.rectangle((16, 136, 47, 151), fill=255)
-        overlay(im, 'bridge', mask)
-        # Roots follow large tree bases, avoiding a repeating forest grid.
-        d = ImageDraw.Draw(im)
-        for x, y in ((150, 126),):
-            d.line((x-8, y+4, x-3, y+1, x, y-6), fill=2, width=2)
-            d.line((x, y-2, x+4, y+5, x+10, y+6), fill=2, width=2)
-            d.line((x-7, y+3, x-2, y, x, y-5), fill=4)
-    elif room == 2:
+    if room<2:return outdoor_ground(room)
+    if room == 2:
         im = tile_material('planks')
         mask, d = mask_image()
         d.rectangle((104, 56, 151, 71), fill=255)
