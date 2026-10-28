@@ -9,7 +9,7 @@ ORIGIN=384
 # The camera follows the player. A screen-space pool stays round instead of
 # stretching the light to the horizon with the Mode 7 floor.
 TORCH_RADII=(78,79,78,77)
-OVERLAY_CUTS=(224,128,88,64,16,48,200,192)
+OVERLAY_CUTS=(224,128,88,64,16,48,176,192)
 
 def hdma_rows(rows):
     """Direct HDMA, coalescing identical rows. Never cross its 127-row limit."""

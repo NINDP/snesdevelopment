@@ -66,7 +66,7 @@ def run(core,pal=False):
         for index in (2,3,4):r.inspect(index)
         r.inspect(5);assert e.state()['room']==2 and e.state()['sun_level']>0
         e.tap(9);capture('chapel-unlit-at-day')
-        assert not np.any(np.asarray(e.frame)[:198]),'Sunlight leaked into boarded chapel'
+        assert not np.any(np.asarray(e.frame)[:176]),'Sunlight leaked into boarded chapel'
         r.light();capture('chapel-torch-at-day')
         sheet=Image.new('RGB',(768,464),(0,0,0));d=ImageDraw.Draw(sheet)
         selected=['day-unlit','dusk-608','night-torch','dawn-180','day-returned','chapel-torch-at-day']

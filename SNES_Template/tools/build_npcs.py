@@ -77,7 +77,14 @@ def build(out,assembly,legacy):
     (out/'npc.pal').write_bytes(palette)
     assembly+=['.section "npc_palette" superfree','npc_palette:','.incbin "assets/generated/npc.pal"','.ends']
     sheet.save(out/'npc-sheet.png',transparency=0)
-    font=ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',16)
+    try:
+        font=ImageFont.truetype('DejaVuSans.ttf',16)
+    except OSError:
+        # Only the contact-sheet labels use a system font, never ROM pixels.
+        try:
+            font=ImageFont.truetype('/System/Library/Fonts/Supplemental/Arial.ttf',16)
+        except OSError:
+            font=ImageFont.load_default()
     preview=Image.new('RGB',(1000,280),(22,28,27));draw=ImageDraw.Draw(preview)
     for role,label in enumerate(LABELS):
         im=actor(role).convert('RGBA');im.putalpha(actor(role).point(lambda c:255 if c else 0,'L'))
