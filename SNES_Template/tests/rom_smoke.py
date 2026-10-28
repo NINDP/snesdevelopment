@@ -92,6 +92,8 @@ class Runner:
         else:self.e.tap(8)
     def finish(self):
         for _ in range(80):
+            if self.e.state()['mode']==13:
+                self.ambush()
             if self.e.state()['mode']==12:
                 self.e.buttons={7}
                 self.e.wait_state(lambda s:s['mode']!=12,'Corridor exit',limit=600)
@@ -99,6 +101,24 @@ class Runner:
             if self.e.state()['mode']!=2:return
             self.action()
         raise AssertionError('Dialogue stuck: '+str(self.e.state()))
+    def ambush(self):
+        for _ in range(1500):
+            state=self.e.state()
+            if state['mode']!=13:return
+            if state['ambush_phase']==4:
+                self.e.run(4);continue
+            if state['ambush_phase']!=1:
+                if state['ambush_timer']:
+                    self.e.run(state['ambush_timer']+2)
+                self.action()
+                continue
+            alive=[fox for fox in state['enemies'] if fox['hp']]
+            if not alive:
+                self.e.run(4);continue
+            fox=max(alive,key=lambda value:value['y'])
+            radius=8 if fox['y']<112 else (12 if fox['y']<148 else 16)
+            self.action(fox['x'],fox['y']-radius)
+        raise AssertionError('Ambush did not finish: '+str(self.e.state()))
     def light(self):
         if not self.e.state()['lamp']:
             self.e.gun_tap(3,128,112) if self.scope else self.e.tap(9)

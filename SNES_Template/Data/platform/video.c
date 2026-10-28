@@ -68,6 +68,7 @@ static SkU8 calibration_stage = 255;
 static SkS16 calibration_x = -1, calibration_y = -1;
 static SkU8 time_banner = 255;
 static SkU8 banner_dirty = 0;
+static SkU8 ambush_ui_partial = 0;
 static void ui_tile(SkU8 x, SkU8 y, SkU16 tile) {
     text_map[(SkU16)y * 32 + x] = tile | (7 << 10) | BG_TIL_PRIO;
 }
@@ -192,6 +193,8 @@ static void background(SkU8 id) {
     SkU8 map_size = SC_32x32;
     if (current_bg == id)
         return;
+    if (current_bg == 14)
+        ambush_video_leave();
     if (current_bg >= 10 && current_bg <= 13)
         perspective_leave();
     switch (id) {
@@ -338,6 +341,10 @@ void video_init(void) {
 }
 void video_commit(void) {
     SkU8 full_ui = dirty && !banner_dirty;
+    /* Never combine a clearing HUD update and a streamed actor pose. Gun
+       edges also make the input NMI longer on these frames. */
+    if (current_bg == 14)
+        full_ui = dirty;
     if (current_bg == 0 && splash_frame != splash_uploaded) {
         dmaCopyVram(splash_frames[splash_frame], VIDEO_BG_MAP, 2048);
         splash_uploaded = splash_frame;
@@ -348,12 +355,19 @@ void video_commit(void) {
         menu_torch_uploaded = menu_torch_frame;
     }
     if (dirty) {
-        if (banner_dirty)
+        if (current_bg == 14 && ambush_ui_partial) {
+            dmaCopyVram((u8 *)text_map, VIDEO_TEXT_MAP, 128);
+            dmaCopyVram((u8 *)text_map + 26 * 64, VIDEO_TEXT_MAP + 26 * 32, 128);
+        } else if (banner_dirty)
             dmaCopyVram((u8 *)text_map + 23 * 64, VIDEO_TEXT_MAP + 23 * 32, 4 * 64);
         else
             dmaCopyVram((u8 *)text_map, VIDEO_TEXT_MAP, sizeof(text_map));
         dirty = 0;
         banner_dirty = 0;
+    }
+    if (current_bg == 14) {
+        ambush_video_commit(full_ui);
+        return;
     }
     if (current_bg >= 10 && current_bg <= 13) {
         perspective_commit(full_ui);
@@ -492,6 +506,66 @@ void video_draw(const Game *g, SkU8 scope) {
     SkU16 keys[10];
     const StoryLine *line;
     calibration_stage = 255;
+    if (g->mode == G_AMBUSH || (g->mode == G_PAUSE && g->return_mode == G_AMBUSH)) {
+        if (current_bg != 14) {
+            if (current_bg >= 10 && current_bg <= 13)
+                perspective_leave();
+            ambush_video_enter();
+            current_bg = 14;
+            memset(last_keys, 255, sizeof(last_keys));
+        }
+        time_banner = 255;
+        ambush_video_draw(g);
+        keys[0] = g->mode | ((SkU16)g->ambush_phase << 8);
+        keys[1] = g->ambush_wave | ((SkU16)g->ambush_health << 8);
+        keys[2] = g->ambush_defeated | ((SkU16)g->option << 8);
+        redraw = keys[0] != last_keys[0] || keys[1] != last_keys[1] || keys[2] != last_keys[2];
+        if (redraw) {
+            ambush_ui_partial = 0;
+            if (g->mode == G_AMBUSH && (last_keys[0] & 255) == G_AMBUSH) {
+                if (g->ambush_phase == AMBUSH_ACTIVE || g->ambush_phase == AMBUSH_BREATHER) {
+                    if ((last_keys[0] >> 8) == AMBUSH_ACTIVE || (last_keys[0] >> 8) == AMBUSH_BREATHER)
+                        ambush_ui_partial = 1;
+                }
+            }
+            memcpy(last_keys, keys, 6);
+            memset(text_map, 0, sizeof(text_map));
+            dirty = 1;
+            banner_dirty = 0;
+            for (i = 0; i < 32; ++i) {
+                ui_tile(i, 0, 256); ui_tile(i, 1, 256);
+                ui_tile(i, 26, 256); ui_tile(i, 27, 256);
+            }
+        }
+        text(1, 0, TXT_AMBUSH_TITLE);
+        text(1, 1, TXT_AMBUSH_WAVE);
+        number(8, 1, g->ambush_wave < 3 ? g->ambush_wave + 1 : 3);
+        text(10, 1, "/3");
+        text(1, 26, TXT_AMBUSH_PACK);
+        number(8, 26, g->ambush_defeated);
+        text(11, 26, "/12");
+        text(1, 27, g->ambush_phase == AMBUSH_BREATHER ? TXT_AMBUSH_REST : TXT_AMBUSH_SCOPE);
+        if (g->mode == G_PAUSE) {
+            panel(6, 22);
+            text(1, 7, TXT_PAUSE);
+            text(2, 12, TXT_RESUME);
+            text(2, 16, TXT_AMBUSH_RESTART);
+            text(2, 20, TXT_MENU);
+            text(0, 12 + g->option * 4, ">");
+        } else if (g->ambush_phase != AMBUSH_ACTIVE && g->ambush_phase != AMBUSH_BREATHER) {
+            panel(6, 18);
+            text(2, 8, g->ambush_phase == AMBUSH_INTRO ? TXT_AMBUSH_TITLE :
+                (g->ambush_phase == AMBUSH_CLEAR ? TXT_AMBUSH_WIN : TXT_AMBUSH_LOST));
+            text(2, 11, g->ambush_phase == AMBUSH_INTRO ? TXT_AMBUSH_BRIEF :
+                (g->ambush_phase == AMBUSH_CLEAR ? TXT_AMBUSH_AFTER : TXT_AMBUSH_RETRY));
+            text(2, 21, g->ambush_phase == AMBUSH_CLEAR ? TXT_AMBUSH_CONTINUE : TXT_AMBUSH_START);
+        }
+        return;
+    }
+    if (current_bg == 14) {
+        ambush_video_leave();
+        current_bg = 255;
+    }
     if (g->mode == G_EXPLORE) {
         if (current_bg != 10 + g->room) {
             hide();

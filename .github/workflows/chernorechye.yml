@@ -54,6 +54,8 @@ jobs:
         working-directory: SNES_Template
         run: |
           core="$RUNNER_TEMP/snes9x/libretro/snes9x_libretro.so"
+          python3 tests/rom_ambush.py --core "$core"
+          python3 tests/rom_ambush.py --core "$core" --pal
           python3 tests/rom_menu.py --core "$core"
           python3 tests/rom_menu.py --core "$core" --pal
           python3 tests/rom_splash.py --core "$core"

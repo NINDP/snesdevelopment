@@ -56,6 +56,10 @@ void game_new(Game *g) {
     begin_dialogue(g, D_PROLOG);
 }
 void game_checkpoint(Game *g) {
+    if (g->mode == G_AMBUSH || (g->mode == G_PAUSE && g->return_mode == G_AMBUSH)) {
+        ambush_begin(g);
+        return;
+    }
     enter_room(g, g->checkpoint_room);
     g->oil = 120;
     g->fear = 15;
@@ -76,7 +80,7 @@ static void choose_ending(Game *g, SkU8 give_village) {
     if (give_village)
         g->ending = END_BAD;
     else
-        g->ending = g->evidence == 7 ? END_SECRET : END_GOOD;
+        g->ending = g->evidence == 7 && HAS(g, F_MEMORY_RETURNED) ? END_SECRET : END_GOOD;
     g->flags |= F_SEALED;
     begin_dialogue(g,
                    g->ending == END_SECRET ? D_SECRET : (g->ending == END_GOOD ? D_GOOD : D_BAD));
@@ -117,7 +121,7 @@ static void finish_dialogue(Game *g) {
         g->flags |= F_CHAPEL;
         break;
     case D_REVEAL:
-        g->flags |= F_REVEAL | F_HEART_TRUTH;
+        g->flags |= F_REVEAL;
         begin_choice(g, C_MIRO);
         break;
     case D_MIRO_RELEASE:
@@ -128,6 +132,7 @@ static void finish_dialogue(Game *g) {
         g->flags |= F_WITNESS;
         break;
     case D_FINAL:
+    case D_FINAL_READY:
     case D_FINAL_WARNING:
         begin_choice(g, C_FINAL);
         break;
@@ -158,6 +163,7 @@ static void finish_dialogue(Game *g) {
         g->memories |= 8;
         break;
     case D_REMEMBER:
+        g->flags |= F_MEMORY_RETURNED;
         begin_choice(g, C_FINAL);
         break;
     case D_GOOD:
@@ -330,7 +336,7 @@ static void interact(Game *g, SkU8 id) {
     }
     if (g->room == 0) {
         if (id == 0)
-            begin_dialogue(g, D_HEAD);
+            begin_dialogue(g, HAS(g, F_HEAD) ? D_HEAD_RETURN : D_HEAD);
         if (id == 1) {
             if (!HAS(g, F_EGOR))
                 begin_dialogue(g, D_EGOR);
@@ -372,8 +378,12 @@ static void interact(Game *g, SkU8 id) {
                 begin_dialogue(g, D_FOREST);
         }
         if (id == 5) {
-            if (HAS(g, F_FOREST | F_MIRO))
-                enter_room(g, 2);
+            if (HAS(g, F_FOREST | F_MIRO)) {
+                if (g->ambush_done)
+                    enter_room(g, 2);
+                else
+                    ambush_begin(g);
+            }
             else
                 g->notice = HAS(g, F_FOREST) ? 20 : 21;
         }
@@ -442,7 +452,8 @@ static void interact(Game *g, SkU8 id) {
         if (id == 5) {
             if (HAS(g, F_WITNESS))
                 begin_dialogue(g, votes(g) != 3 ? D_FINAL_WARNING :
-                    (g->evidence == 7 ? D_REMEMBER : D_FINAL));
+                    (HAS(g, F_MEMORY_RETURNED) ? D_FINAL_READY :
+                    (g->evidence == 7 ? D_REMEMBER : D_FINAL)));
             else
                 g->notice = 23;
         }
@@ -592,7 +603,9 @@ void game_tick(Game *g, const SkInput *in) {
             if (g->option == 0)
                 g->mode = g->return_mode;
             else if (g->option == 1) {
-                if (g->return_mode == G_CORRIDOR) {
+                if (g->return_mode == G_AMBUSH)
+                    ambush_begin(g);
+                else if (g->return_mode == G_CORRIDOR) {
                     g->mode = G_CORRIDOR;
                     g->x = g->destination_x = CORRIDOR_START;
                     g->y = 110;
@@ -607,7 +620,7 @@ void game_tick(Game *g, const SkInput *in) {
     }
     if ((in->pressed & SK_PAUSE) &&
         ((g->mode >= G_DIALOGUE && g->mode <= G_JOURNAL) || g->mode == G_BELL ||
-         g->mode == G_CORRIDOR)) {
+         g->mode == G_CORRIDOR || g->mode == G_AMBUSH)) {
         g->return_mode = g->mode;
         g->mode = G_PAUSE;
         g->bow_draw = g->shot_request = 0;
@@ -615,6 +628,11 @@ void game_tick(Game *g, const SkInput *in) {
         return;
     }
     ++g->tick;
+    if (g->mode == G_AMBUSH) {
+        if (ambush_tick(g, in))
+            enter_room(g, 2);
+        return;
+    }
     if (g->mode == G_CORRIDOR) {
         corridor_tick(g, in);
         return;
@@ -810,12 +828,15 @@ const char *game_goal(const Game *g) {
     }
     if (!HAS(g, F_REVEAL))
         return TXT_G_REVEAL;
+    if (HAS(g, F_WITNESS) && g->evidence == 7 && !HAS(g, F_MEMORY_RETURNED))
+        return TXT_G_REMEMBER;
     return HAS(g, F_WITNESS) ? TXT_G_FINAL : TXT_G_SEAL;
 }
 const char *game_journal(const Game *g) {
     if (HAS(g, F_WITNESS)) {
         if (votes(g) != 3) return TXT_J_REPAIR;
-        return g->evidence == 7 ? TXT_J_READY : TXT_J_FINAL;
+        if (HAS(g, F_MEMORY_RETURNED)) return TXT_J_READY;
+        return g->evidence == 7 ? TXT_J_REMEMBER : TXT_J_FINAL;
     }
     if (HAS(g, F_REVEAL) && votes(g) == 3)
         return TXT_J_SEAL;

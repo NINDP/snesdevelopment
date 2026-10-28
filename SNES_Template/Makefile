@@ -22,6 +22,7 @@ $(OFILES): Makefile
 .SECONDARY:
 .PHONY: all assets clean buildActual
 buildActual: $(ROMNAME).sfc
+	python3 tools/export_playable.py
 all: assets
 	$(MAKE) buildActual
 assets:

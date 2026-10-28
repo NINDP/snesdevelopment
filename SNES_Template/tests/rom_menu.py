@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Verify menu fire animation and navigation against actual PPU frames."""
 import argparse
+import ctypes as C
 import json
 from pathlib import Path
+import struct
 
 import numpy as np
 from libretro import Emulator, ROOT
@@ -23,6 +25,9 @@ def run(core, pal=False):
         e.wait_mode(1)
         e.run(80)  # Let the thirty-draw menu fade finish in both regions.
         reference = np.asarray(frame()).copy()
+        vram=e.lib.retro_get_memory_data(3)
+        row=struct.unpack('<32H',C.string_at(vram+0xb800+24*64,64))
+        assert all(tile==0 for tile in row), 'Technical build text leaked into the menu'
         outside = np.ones(reference.shape[:2], dtype=bool)
         outside[128:168, 176:192] = False
         poses = {}

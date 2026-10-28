@@ -14,13 +14,13 @@ static void press(Game *g, SkU16 button) {
 }
 static void finish(Game *g) {
     unsigned n = 0;
-    while ((g->mode == G_DIALOGUE || g->mode == G_CORRIDOR) && n++ < 400) {
+    while ((g->mode == G_DIALOGUE || g->mode == G_CORRIDOR || g->mode == G_AMBUSH) && n++ < 5000) {
         if (g->mode == G_DIALOGUE &&
             (g->dialogue == D_MODERN || g->dialogue == D_END_STAY || g->dialogue == D_END_LOST))
             last_epilogue = g->dialogue;
         press(g, g->mode == G_CORRIDOR ? SK_RIGHT : SK_ACTION);
     }
-    assert(n < 400);
+    assert(n < 5000);
 }
 static void inspect(Game *g, SkU8 hotspot) {
     const Hotspot *h = game_hotspot(g->room, hotspot);
@@ -214,6 +214,8 @@ static void test_reconciliation_and_memory(void) {
     assert(g.room == 0);
     inspect(&g, 1); choice(&g, 0);
     assert(g.flags & F_KIND);
+    inspect(&g, 0);
+    assert(g.dialogue == D_HEAD_RETURN && (g.flags & F_KIND));
     assert(strcmp(game_goal(&g), TXT_G_REPAIR_MIRO) == 0);
     inspect(&g, 3); inspect(&g, 1); choice(&g, 0);
     assert(g.flags & F_CONFESS);
@@ -221,8 +223,16 @@ static void test_reconciliation_and_memory(void) {
     inspect(&g, 5); inspect(&g, 4); inspect(&g, 0); choice(&g, 0);
     assert(g.flags & F_FREE);
     assert(!g.memories); /* Written evidence alone restores the full memory. */
+    assert(!(g.flags & F_MEMORY_RETURNED));
+    assert(strcmp(game_goal(&g), TXT_G_REMEMBER) == 0);
+    assert(strcmp(game_journal(&g), TXT_J_REMEMBER) == 0);
     inspect(&g, 5);
-    assert(g.dialogue == D_REMEMBER);
+    assert(g.dialogue == D_REMEMBER && (g.flags & F_MEMORY_RETURNED));
+    press(&g, SK_BACK);
+    assert(g.mode == G_EXPLORE && (g.flags & F_MEMORY_RETURNED));
+    assert(strcmp(game_journal(&g), TXT_J_READY) == 0);
+    inspect(&g, 5);
+    assert(g.dialogue == D_FINAL_READY); /* No second restoration after cancelling. */
     choice(&g, 0);
     assert(g.mode == G_END && g.ending == END_SECRET);
     /* Echoes and bells cannot claim the truth without written witnesses. */
@@ -231,6 +241,7 @@ static void test_reconciliation_and_memory(void) {
     g.memories = 15;
     inspect(&g, 5);
     assert(g.dialogue == D_FINAL);
+    assert(!(g.flags & F_MEMORY_RETURNED));
     choice(&g, 0);
     assert(g.mode == G_END && g.ending == END_GOOD);
 }
@@ -339,7 +350,7 @@ static void test_clock_and_text(void) {
             assert(strlen(line->text) <= 154);
             assert(strlen(line->text) == line->length);
         }
-    assert(sizeof(Game) == 154);
+    assert(sizeof(Game) == 164);
 }
 
 static void test_optional_systems(void) {

@@ -1,14 +1,45 @@
 """A broken or ambiguous link must never publish over a tested ROM."""
 import importlib.util
+import hashlib
 import json
+import struct
 import tempfile
 import textwrap
 import unittest
+import zipfile
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location('link_rom', Path(__file__).resolve().parents[1] / 'tools/link_rom.py')
 link_rom = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(link_rom)
+export_spec = importlib.util.spec_from_file_location('export_playable', Path(__file__).resolve().parents[1] / 'tools/export_playable.py')
+export_playable = importlib.util.module_from_spec(export_spec)
+export_spec.loader.exec_module(export_playable)
+
+class PlayableExportTests(unittest.TestCase):
+    def test_stale_copies_are_replaced_and_unlinked_rom_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            for directory in ('build','docs','dist'):
+                (root/directory).mkdir()
+            rom=bytearray(1048576)
+            checksum=510
+            struct.pack_into('<HH',rom,0x7fdc,checksum^65535,checksum)
+            digest=hashlib.sha256(rom).hexdigest()
+            (root/'chernorechye.sfc').write_bytes(rom)
+            (root/'build/link_manifest.json').write_text(json.dumps({'rom_sha256':digest}))
+            for name in export_playable.DOCUMENTS:
+                (root/'docs'/name).write_text(name)
+            (root/'dist/chernorechye.sfc').write_bytes(b'old copy')
+            export_playable.export(root)
+            self.assertEqual((root/'dist/chernorechye.sfc').read_bytes(),rom)
+            self.assertEqual((root/'dist/sha256.txt').read_text().split()[0],digest)
+            with zipfile.ZipFile(root/'dist'/export_playable.ARCHIVE) as archive:
+                self.assertEqual(archive.read('chernorechye.sfc'),rom)
+            (root/'chernorechye.sfc').write_bytes(b'unlinked build')
+            with self.assertRaisesRegex(ValueError,'link manifest'):
+                export_playable.export(root)
+            self.assertEqual((root/'dist/chernorechye.sfc').read_bytes(),rom)
 
 class JournalLayoutTests(unittest.TestCase):
     def test_story_text_fits_journal_boxes(self):

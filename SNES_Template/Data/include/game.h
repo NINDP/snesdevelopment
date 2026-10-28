@@ -14,7 +14,8 @@ enum GameMode {
     G_HELP,
     G_CREDITS,
     G_BELL,
-    G_CORRIDOR
+    G_CORRIDOR,
+    G_AMBUSH
 };
 enum StoryFlag {
     F_HEAD = 1,
@@ -32,7 +33,7 @@ enum StoryFlag {
     F_FREE = 4096,
     F_WITNESS = 8192,
     F_SEALED = 16384,
-    F_HEART_TRUTH = 32768
+    F_MEMORY_RETURNED = 32768
 };
 enum DialogueId {
     D_PROLOG,
@@ -79,6 +80,8 @@ enum DialogueId {
     D_REPAIR,
     D_END_STAY,
     D_END_LOST,
+    D_FINAL_READY,
+    D_HEAD_RETURN,
     D_COUNT
 };
 enum ChoiceId { C_EGOR, C_CONFESS, C_MIRO, C_FINAL };
@@ -95,6 +98,10 @@ enum TimePhase { TIME_NIGHT, TIME_DAWN, TIME_DAY, TIME_DUSK };
 #define SHOVE_COOLDOWN 60
 enum EnemyKind { ENEMY_SHADE, ENEMY_CRAWLER };
 enum EnemyState { ENEMY_HUNT, ENEMY_WINDUP, ENEMY_LUNGE, ENEMY_RECOVER };
+enum AmbushPhase { AMBUSH_INTRO, AMBUSH_ACTIVE, AMBUSH_CLEAR, AMBUSH_FAILED, AMBUSH_BREATHER };
+enum FoxState { FOX_STALK, FOX_WINDUP, FOX_CHARGE, FOX_RETREAT, FOX_FEINT };
+#define AMBUSH_FOX_COUNT 12
+#define AMBUSH_PLAYER_Y 202
 typedef struct {
     SkS16 x, y;
     SkU8 hp, hit, kind, attack;
@@ -138,6 +145,10 @@ typedef struct {
     SkU8 notice_ticks, focus;
     SkU8 hurt_timer, shove_cooldown;
     SkU8 hit_stop, enemy_clock;
+    /* Screen-space encounter. The original 154-byte debug prefix is stable. */
+    SkU8 ambush_done, ambush_phase, ambush_wave, ambush_spawned;
+    SkU8 ambush_defeated, ambush_health, ambush_aim_ticks, ambush_timer;
+    SkU16 ambush_clock;
 } Game;
 #define TORCH_RADIUS 64
 #define CORRIDOR_START 80
@@ -172,6 +183,10 @@ void combat_init(Game *g);
 void combat_enter(Game *g);
 void combat_tick(Game *g, const SkInput *in);
 void combat_ward(Game *g);
+void ambush_begin(Game *g);
+SkU8 ambush_tick(Game *g, const SkInput *in);
+SkU8 ambush_fox_lod(SkS16 y);
+SkU8 ambush_fox_width(SkS16 y);
 SkU8 combat_capacity(const Game *g);
 SkU8 combat_tier(const Game *g);
 SkU8 combat_direction(SkS16 dx, SkS16 dy);

@@ -38,7 +38,7 @@ def report():
         entries = re.findall(r'^\s*(\S+) dsb (\d+)\s*$', path.read_text(), re.M)
         allocations[str(path.relative_to(ROOT))] = sum(int(n) for _, n in entries)
         sizes.update({name.split('{WLA_FILENAME}_')[-1]: int(n) for name, n in entries})
-    expected = {'text_map': 1792, 'tables': 266, 'heat_tables': 266, 'game': 154}
+    expected = {'text_map': 1792, 'tables': 266, 'heat_tables': 266, 'game': 164}
     for name, size in expected.items():
         if sizes.get(name) != size:
             raise ValueError('Unexpected buffer/state size: ' + name)
@@ -207,6 +207,26 @@ def report():
             raise ValueError('Interaction panel must fit one LoROM bank: '+filename)
         interaction_bytes+=size
     samples = sum(p.stat().st_size for p in assets.glob('*.brr'))
+    ambush_bytes = {}
+    for filename, symbol, limit in (
+            ('ambush-ground.vram', 'ambush_ground_vram', 32768),
+            ('ambush-sky.chr', 'ambush_sky_tiles', 8192),
+            ('ambush-sky.map', 'ambush_sky_map', 2048),
+            ('ambush-obj.chr', 'ambush_obj_tiles', 8192)):
+        size = (assets/filename).stat().st_size
+        match = re.search(r'^([0-9a-fA-F]{8}) '+symbol+'$', symbols, re.M)
+        if not match or not 0 < size <= limit or (int(match[1],16)&0x7fff)>32768-size:
+            raise ValueError('Ambush DMA exceeds its VRAM or LoROM bank budget: '+filename)
+        if filename != 'ambush-sky.chr' and size != limit:
+            raise ValueError('Unexpected ambush payload size: '+filename)
+        ambush_bytes[filename] = size
+    fox_frames=list(assets.glob('ambush-fox-*.chr'))
+    fox_addresses=re.findall(r'^([0-9a-fA-F]{8}) ambush_fox_frame\d+$',symbols,re.M)
+    if len(fox_frames)!=64 or len(fox_addresses)!=64 or any(p.stat().st_size!=2048 for p in fox_frames):
+        raise ValueError('Expected sixty-four bank-contained fox poses')
+    if any((int(addr,16)&0x7fff)>32768-2048 for addr in fox_addresses):
+        raise ValueError('Streamed fox pose crosses a LoROM bank')
+    ambush_bytes['fox_poses']=64*2048
     if samples > 4096:
         raise ValueError('BRR payload exceeds the allocated 4 KiB sample region')
     if (ROOT / 'chernorechye.sfc').read_bytes()[0x7fd5] != 0x30:
@@ -220,6 +240,7 @@ def report():
               'total_project_wram_limit': 8192,
               'background_bytes': backgrounds, 'cinematic_bytes': cinematics,
               'perspective_bytes': perspective, 'torch_table_bytes': light_bytes,
+              'ambush_bytes': ambush_bytes,
               'daycycle_rom_bytes': daylight_bytes,
               'interaction_rom_bytes': interaction_bytes,
               'fastrom': True, 'ambient_map_bytes': 2048, 'font_bytes': font,
