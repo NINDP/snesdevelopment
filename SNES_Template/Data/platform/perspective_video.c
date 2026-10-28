@@ -52,9 +52,10 @@ static SkU8 parallax_table[13];
 static SkU8 active_overlay = 0, pending_overlay = 0;
 static SkU8 old_cut = 255, old_lit = 255, old_phase = 255, phase;
 static SkU8 sky, old_sky = 255, previous_sky = 255, palette_sky = 255;
+static SkU8 published_sky = 255, published_lit = 255;
 static u8 *sky_palettes;
-static SkU16 camera_world_x, camera_world_y;
-static SkU8 lit, force_objects = 1, previous_facing = 255;
+SkU16 camera_world_x, camera_world_y;
+static SkU8 lit, force_objects = 1, previous_bow = 255;
 static SkS16 previous_x = -1, previous_y = -1;
 static SkS16 cull_left, cull_right;
 static SkS16 enemy_x_cache[COMBAT_ENEMIES], enemy_y_cache[COMBAT_ENEMIES];
@@ -68,6 +69,15 @@ static SkU8 shove_visible = 0, hurt_visible = 0;
 static SkU8 slots, moving;
 /* Read-only regression counter: publishing PPU state must finish in VBlank. */
 SkU16 video_late_commits = 0;
+SkU8 sprite_bands[11], sprite_band_limit;
+static SkU8 critical_plan[26];
+static SkS16 critical_x[26], critical_y[26];
+
+SkU8 perspective_project_object(const PerspectiveObject *object, SkS16 *sx, SkS16 *sy);
+void perspective_budget_reset(SkU16 limit);
+SkU8 perspective_lod(SkU16 kind, SkS16 bottom);
+SkU8 perspective_reserve(SkS16 top, SkS16 bottom, SkU16 cost);
+static SkU8 previous_budget = 255;
 /* Fixed 16-bit ABI for the short 65C816 OAM writers. */
 void perspective_obj(SkU16 slot, SkS16 x, SkS16 y, SkU16 tile, SkU16 large);
 void perspective_quad(SkU16 slot, SkS16 x, SkS16 y, SkU16 tile, SkU16 large);
@@ -77,6 +87,8 @@ void perspective_clear(void);
 static void player(void) {
     hero_draw(slots);
     slots += 6;
+    torch_slot = slots;
+    slots += 4;
 }
 static void combat_draw(const Game *g, SkU8 force) {
     const Enemy *enemy;
@@ -107,7 +119,7 @@ static void combat_draw(const Game *g, SkU8 force) {
            spend twelve generic OAM calls rewriting hidden daytime actors. */
         if (!state) {
             if (!force && enemy_state_cache[i]) {
-                slot = i ? 58 + (i << 1) : 50;
+                slot = i ? 58 + (i << 1) : 56;
                 obj(slot, 0, 240, 0, 0);
                 obj(slot + 1, 0, 240, 0, 0);
             }
@@ -126,7 +138,7 @@ static void combat_draw(const Game *g, SkU8 force) {
         enemy_state_cache[i] = state;
         /* Keep the original shade slots for old captures and give new actors
            independent fixed slots so movement never rebuilds the scenery. */
-        slot = i ? 58 + (i << 1) : 50;
+        slot = i ? 58 + (i << 1) : 56;
         if (!perspective_project(g, enemy->x, enemy->y, &sx, &sy)) {
             obj(slot, 0, 240, 0, 0);
             obj(slot + 1, 0, 240, 0, 0);
@@ -238,6 +250,10 @@ void perspective_enter(const Game *g) {
     dmaCopyCGram(&npc_palette, 192, 32);
     npc_enter(g);
     hero_enter();
+    /* Seed a complete hero pose while blank. The first full UI upload may
+       defer streaming, but must never expose the legacy intro OBJ cells. */
+    hero_prepare(g, 0);
+    hero_commit();
     torch_enter();
     dmaCopyVram(&bow_tiles, VIDEO_OBJ_TILES + 1024, BOW_TILE_BYTES);
     dmaCopyVram(&scenery_low_tiles, VIDEO_OBJ_TILES + 512, 1024);
@@ -270,6 +286,18 @@ void perspective_enter(const Game *g) {
     REG_COLDATA = 0x85;
     REG_WH0 = 255; REG_WH1 = 0;
     REG_WH2 = 255; REG_WH3 = 0;
+    /* Only DMA0 and the SDK's DMA7 are mutable during VBlank. Configure the
+       six dedicated HDMA channels once; per-frame commits update sources. */
+    REG_DMAP1 = 0; REG_BBAD1 = 0x05;
+    REG_DMAP2 = 0; REG_BBAD2 = 0x2c;
+    REG_DMAP3 = 2; REG_BBAD3 = 0x1b;
+    REG_DMAP4 = 2; REG_BBAD4 = 0x1e;
+    REG_DMAP5 = 0; REG_BBAD5 = 0;
+    REG_DMAP6 = 4; REG_BBAD6 = 0x26;
+    parallax_table[0] = 40; parallax_table[2] = 0;
+    parallax_table[3] = 24; parallax_table[5] = 0;
+    parallax_table[6] = 127; parallax_table[8] = 0;
+    parallax_table[9] = 33; parallax_table[11] = 0; parallax_table[12] = 0;
     /* Initial UI, hero and two resident transfers can fill the next VBlank.
        Publish all daylight colors now, while the screen is forced blank. */
     scene_palettes();
@@ -282,13 +310,17 @@ void perspective_enter(const Game *g) {
     glow_source.mem.p = glow_tables[0];
     old_cut = 255;
     old_sky = 255;
+    published_sky = published_lit = 255;
     force_objects = 1;
-    setScreenOn();
+    /* The first commit publishes the new OAM, text, modes and HDMA together.
+       Releasing blank here exposed half-built worlds after journal exits. */
+    REG_INIDISP = 0x80;
 }
 void perspective_leave(void) {
     setScreenOff();
     REG_HDMAEN = 0;
-    perspective_clear();
+    /* Dedicated Mode1 screens must not inherit combat sprites 64..77. */
+    oamClear(0, 0);
     hero_leave();
     npc_leave();
     torch_leave();
@@ -310,9 +342,9 @@ void perspective_leave(void) {
     setMode(BG_MODE1, BG3_MODE1_PRIORITY_HIGH);
 }
 void perspective_draw(const Game *g) {
-    SkU8 i, count, kind, inserted = 0, objects_changed;
+    SkU8 i, count, kind, inserted = 0, objects_changed, level, budget, critical_index;
     SkU16 tile;
-    SkS16 sx, sy, player_y;
+    SkS16 sx, sy, player_y, object_y, far_actor_y, far_scenery_y;
     const PerspectiveObject *object;
     camera_world_x = PERSPECTIVE_ORIGIN + g->x;
     camera_world_y = PERSPECTIVE_ORIGIN + g->y;
@@ -320,36 +352,76 @@ void perspective_draw(const Game *g) {
     sky = game_daylight(g);
     phase = (g->bow_mode ? 16 : ((g->direction & 6) << 1)) | ((g->tick >> 3) & 3);
     moving = previous_x != g->x || previous_y != g->y;
+    budget = 34 - (g->enemy_slots << 2);
+    if (g->shove_cooldown > SHOVE_COOLDOWN - 12) budget -= 2;
+    if (g->hurt_timer > 32) budget -= 2;
     hero_prepare(g, moving);
     npc_prepare(g);
-    objects_changed = force_objects || moving || (!sky && (phase >> 2) != previous_facing) || sky != previous_sky;
+    objects_changed = force_objects || moving || sky != previous_sky || budget != previous_budget || g->bow_mode != previous_bow || g->bow_mode || projectiles_visible;
     if (objects_changed) {
         perspective_clear();
         slots = 0;
+        perspective_budget_reset(budget);
+        previous_budget = budget;
         count = perspective_counts[g->room];
         object = perspective_objects[g->room];
         player_y = g->y;
-        if ((phase >> 2) != previous_facing || sky != previous_sky) {
-            cull_left = sky ? -32 : (g->bow_mode ? TORCH_PLANTED_X : perspective_light_x[phase >> 2]) - 112;
-            cull_right = sky ? 287 : cull_left + 224;
+        far_actor_y = player_y - 112;
+        far_scenery_y = player_y - 180;
+        /* Cover the union of every held/planted light position. Turning the
+           torch changes only PPU windows, never scenery membership or LOD. */
+        cull_left = sky ? -32 : (g->room == 0 ? (g->bow_mode ? -8 : 2) : (g->bow_mode ? 8 : 18));
+        cull_right = sky ? 287 : (g->room == 0 ? (g->bow_mode ? 220 : 254) : (g->bow_mode ? 204 : 238));
+        /* Allocate houses, then people, before optional clutter. Keep emission
+           in depth order: allocation priority must not change occlusion. */
+        for (i = 0; i < COMBAT_ARROWS; ++i) {
+            if (g->arrows[i].life && perspective_project(g, g->arrows[i].x >> 2,
+                    g->arrows[i].y >> 2, &sx, &sy))
+                perspective_reserve(sy - 30, sy - 15, 2);
         }
+        if (g->bow_mode && perspective_project(g, g->aim_x, g->aim_y, &sx, &sy))
+            perspective_reserve(sy - 26, sy - 11, 2);
+        for (critical_index = 0; critical_index < 6; ++critical_index) {
+            i = perspective_critical_indices[g->room][critical_index];
+            if (i == 255) break;
+            critical_plan[i] = 0;
+            object = perspective_objects[g->room] + i;
+            kind = object->kind & 0x7f;
+            if (object->y < player_y - (kind == 4 ? 180 : 112)) continue;
+            if (!perspective_project_object(object, &sx, &sy)) continue;
+            if (sx < cull_left || sx > cull_right) continue;
+            level = perspective_lod(kind, sy);
+            critical_plan[i] = level;
+            critical_x[i] = sx;
+            critical_y[i] = sy;
+        }
+        object = perspective_objects[g->room];
         for (i = 0; i < count; ++i, ++object) {
-            if (!inserted && object->y < player_y) {
+            object_y = object->y;
+            if (!inserted && object_y < player_y) {
                 player();
                 inserted = 1;
             }
             kind = object->kind & 0x7f;
-            if (object->y < player_y - (kind == 1 || kind == 4 ? 180 : 112))
-                continue;
-            if (!perspective_project(g, object->x, object->y, &sx, &sy))
-                continue;
-            /* Even the widest (64 px) billboard cannot touch the light here.
-               Keep partial silhouettes at the edge; PPU windows clip pixels. */
-            if (sx < cull_left || sx > cull_right)
-                continue;
-            tile = object->tile;
+            if (object_y < far_actor_y) {
+                if (kind != 1 && kind != 4) continue;
+                if (object_y < far_scenery_y) continue;
+            }
+            if (kind == 0 || kind == 4) {
+                level = critical_plan[i];
+                if (!level) continue;
+                sx = critical_x[i];
+                sy = critical_y[i];
+            } else {
+                if (!perspective_project_object(object, &sx, &sy)) continue;
+                if (sx < cull_left || sx > cull_right) continue;
+                level = perspective_lod(kind, sy);
+            }
+            if (!level) continue;
+            --level;
             if (kind == 0) {
-                if (sy < 132)
+                tile = object->tile;
+                if (!level)
                     obj(slots++, sx - 8, sy - 16, 32 + (tile << 1), 0);
                 else {
                     tile = tile == 1 || tile == 4 ? 288 : 256;
@@ -357,23 +429,27 @@ void perspective_draw(const Game *g) {
                     slots += 6;
                 }
             } else if (kind == 1) {
-                if (sy < 105)
+                if (!level)
                     obj(slots++, sx - 8, sy - 16, 448 | 0x0600, 0);
-                else if (sy < 126)
+                else if (level == 1)
                     obj(slots++, sx - 16, sy - 32, 392 | 0x0600, 1);
                 else {
+                    /* The HUD starts at176. Do not emit cells that lie wholly
+                       below it; their visible silhouette is unchanged. */
+                    if (sy >= 240) continue;
                     obj(slots++, sx - 16, sy - 64, 384 | 0x0600, 1);
-                    obj(slots++, sx - 16, sy - 32, 388 | 0x0600, 1);
+                    if (sy < 208)
+                        obj(slots++, sx - 16, sy - 32, 388 | 0x0600, 1);
                 }
             } else if (kind == 3) {
-                if (sy < 140)
+                if (!level)
                     obj(slots++, sx - 8, sy - 16, 488 | 0x0600, 0);
                 else
-                    obj(slots++, sx - 16, sy - 32, tile | 0x0600, 1);
+                    obj(slots++, sx - 16, sy - 32, object->tile | 0x0600, 1);
             } else if (kind == 4) {
-                if (sy < 95)
+                if (!level)
                     obj(slots++, sx - 8, sy - 16, 450 | 0x0600, 0);
-                else if (sy < 130) {
+                else if (level == 1) {
                     perspective_quad(slots, sx - 16, sy - 32, 224 | 0x0600, 0);
                     slots += 4;
                 } else {
@@ -381,20 +457,20 @@ void perspective_draw(const Game *g) {
                     slots += 4;
                 }
             } else if (kind == 5) {
-                if (sy < 140)
+                if (!level)
                     obj(slots++, sx - 8, sy - 16, 494 | 0x0600, 0);
                 else {
                     perspective_quad(slots, sx - 16, sy - 32, 232 | 0x0600, 0);
                     slots += 4;
                 }
             } else
-                obj(slots++, sx - 8, sy - 16, tile | 0x0600, 0);
+                obj(slots++, sx - 8, sy - 16, object->tile | 0x0600, 0);
         }
         if (!inserted)
             player();
         previous_x = g->x;
         previous_y = g->y;
-        previous_facing = phase >> 2;
+        previous_bow = g->bow_mode;
         previous_sky = sky;
         force_objects = 0;
     }
@@ -469,27 +545,32 @@ void perspective_overlay(SkU8 cut) {
 void perspective_commit(SkU8 full_ui) {
     SkU16 hofs = camera_world_x - 128, vofs = camera_world_y - PERSPECTIVE_ANCHOR;
     SkU8 shade;
-    REG_HDMAEN = 0;
     /* A full text map consumes this blank's streaming budget. Otherwise one
        1 KiB actor upload at most; pending NPC poses carry into the next blank. */
     if (!full_ui && !hero_commit())
         npc_commit();
+    if (!full_ui)
+        torch_commit();
     if (!full_ui && sky != palette_sky) {
         scene_palettes();
     }
-    REG_TMW = sky ? 0 : 0x11;
-    REG_WOBJSEL = sky ? 0x23 : 0x83;
-    REG_CGWSEL = sky && !lit ? 0 : 0x20;
-    REG_CGADSUB = sky ? 0x91 : 0xd1;
-    if (sky) {
-        shade = 16 - sky;
-        REG_COLDATA = 0x20 | shade;
-        REG_COLDATA = 0x40 | shade;
-        REG_COLDATA = 0x80 | shade;
-    } else {
-        REG_COLDATA = 0x21;
-        REG_COLDATA = 0x43;
-        REG_COLDATA = 0x85;
+    if (sky != published_sky || lit != published_lit) {
+        REG_TMW = sky ? 0 : 0x11;
+        REG_WOBJSEL = sky ? 0x23 : 0x83;
+        REG_CGWSEL = sky && !lit ? 0 : 0x20;
+        REG_CGADSUB = sky ? 0x91 : 0xd1;
+        if (sky) {
+            shade = 16 - sky;
+            REG_COLDATA = 0x20 | shade;
+            REG_COLDATA = 0x40 | shade;
+            REG_COLDATA = 0x80 | shade;
+        } else {
+            REG_COLDATA = 0x21;
+            REG_COLDATA = 0x43;
+            REG_COLDATA = 0x85;
+        }
+        published_sky = sky;
+        published_lit = lit;
     }
     if (pending_overlay) {
         active_overlay = pending_overlay - 1;
@@ -502,29 +583,26 @@ void perspective_commit(SkU8 full_ui) {
     REG_M7Y = camera_world_y; REG_M7Y = camera_world_y >> 8;
     REG_M7HOFS = hofs; REG_M7HOFS = hofs >> 8;
     REG_M7VOFS = vofs; REG_M7VOFS = vofs >> 8;
-    REG_DMAP1 = 0; REG_BBAD1 = 0x05;
     REG_A1T1LH = mode_source.mem.c.addr; REG_A1B1 = mode_source.mem.c.bank;
-    REG_DMAP3 = 2; REG_BBAD3 = 0x1b;
     REG_A1T3LH = scale_source.mem.c.addr; REG_A1B3 = scale_source.mem.c.bank;
-    REG_DMAP4 = 2; REG_BBAD4 = 0x1e;
     REG_A1T4LH = scale_source.mem.c.addr; REG_A1B4 = scale_source.mem.c.bank;
-    REG_DMAP2 = 0; REG_BBAD2 = 0x2c;
     REG_A1T2LH = layers_source.mem.c.addr; REG_A1B2 = layers_source.mem.c.bank;
     /* A single four-register transfer publishes both concentric windows. */
-    REG_DMAP6 = 4; REG_BBAD6 = 0x26;
     REG_A1T6LH = light_source.mem.c.addr; REG_A1B6 = light_source.mem.c.bank;
-    REG_DMAP5 = 0; REG_BBAD5 = 0;
     REG_A1T5LH = glow_source.mem.c.addr; REG_A1B5 = glow_source.mem.c.bank;
-    parallax_table[0] = 40; parallax_table[1] = (camera_world_x - PERSPECTIVE_ORIGIN) >> 4; parallax_table[2] = 0;
-    parallax_table[3] = 24; parallax_table[4] = (camera_world_x - PERSPECTIVE_ORIGIN) >> 3; parallax_table[5] = 0;
-    parallax_table[6] = 127; parallax_table[7] = (camera_world_x - PERSPECTIVE_ORIGIN) >> 2; parallax_table[8] = 0;
-    parallax_table[9] = 33; parallax_table[10] = parallax_table[7]; parallax_table[11] = 0; parallax_table[12] = 0;
-    REG_DMAP7 = 2; REG_BBAD7 = 0x0f;
-    REG_A1T7LH = sky_source.mem.c.addr; REG_A1B7 = sky_source.mem.c.bank;
+    parallax_table[1] = (camera_world_x - PERSPECTIVE_ORIGIN) >> 4;
+    parallax_table[4] = (camera_world_x - PERSPECTIVE_ORIGIN) >> 3;
+    parallax_table[7] = (camera_world_x - PERSPECTIVE_ORIGIN) >> 2;
+    parallax_table[10] = parallax_table[7];
+    /* PVSnesLib's NMI owns DMA7 for OAM. Never enable HDMA on that channel:
+       Mesen/hardware can corrupt sprites even if we restore it after NMI.
+       DMA0 is available between commits and is disabled before text uploads. */
+    REG_DMAP0 = 2; REG_BBAD0 = 0x0f;
+    REG_A1T0LH = sky_source.mem.c.addr; REG_A1B0 = sky_source.mem.c.bank;
     REG_TM = 0;
     REG_WH0 = 255; REG_WH1 = 0;
     REG_WH2 = 255; REG_WH3 = 0;
-    REG_HDMAEN = sky ? 0xfe : 0x7e;
+    REG_HDMAEN = sky ? 0x7f : 0x7e;
     REG_INIDISP = 15;
     if (!(REG_HVBJOY & 0x80))
         ++video_late_commits;

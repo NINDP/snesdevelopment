@@ -7,6 +7,7 @@
 typedef struct { SkS16 x, y; SkU16 tile; SkU8 kind; } PerspectiveObject;
 extern const PerspectiveObject *const perspective_objects[4];
 extern const SkU8 perspective_counts[4];
+extern const SkU8 perspective_critical_indices[4][6];
 extern const SkU8 perspective_light_x[4], perspective_light_y[4];
 extern const SkU8 perspective_y[241], perspective_size[241];
 extern const SkS16 perspective_pick_y[176];

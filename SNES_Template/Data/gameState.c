@@ -180,6 +180,15 @@ void GameUpdate(void) {
         return;
     }
 
+    /* Pad movement overrides passive Scope facing. Do not traverse every
+       billboard for a hover point that this tick will discard. Clicks,
+       aiming, bow targeting and bow-toggle edges still use normal picking. */
+    if (game.mode == G_EXPLORE && frame_input.scope && !game.bow_mode &&
+        !frame_input.fire && !(frame_input.held & SK_AIM) &&
+        !(frame_input.pressed & SK_TURN_LEFT) &&
+        (frame_input.held & (SK_LEFT | SK_RIGHT | SK_UP | SK_DOWN)))
+        frame_input.aim_valid = 0;
+
     /*
      * Super Scope coordinate conversion.
      *

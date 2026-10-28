@@ -25,7 +25,10 @@ def panorama(room):
     if room==0:
         # Far fields and roofs remain small enough to read as another hamlet.
         d.polygon(((0,77),(76,70),(135,77),(207,72),(256,77),(256,87),(0,87)),fill=15)
-        for y in (79,83,86):d.line((0,y,255,y),fill=10)
+        # Irregular field texture, never full-width horizontal scanline bands.
+        for _ in range(90):
+            x,y=rng.randrange(256),rng.randrange(77,88)
+            d.point((x,y),fill=10 if rng.randrange(3) else 15)
         for x,y in ((18,69),(43,73),(160,68),(184,73),(217,70)):
             d.rectangle((x,y,x+14,y+10),fill=13)
             d.polygon(((x-3,y),(x+6,y-9),(x+17,y),(x+16,y+2),(x-2,y+2)),fill=11)

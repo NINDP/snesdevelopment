@@ -50,6 +50,15 @@ jobs:
           git -C "$RUNNER_TEMP/snes9x" checkout fae2fea08f74180759ef540ee94259213f503480
           git -C "$RUNNER_TEMP/snes9x" submodule update --init --recursive
           make -C "$RUNNER_TEMP/snes9x/libretro" -j2
+      - name: Check hardware DMA ownership in Mesen
+        working-directory: SNES_Template
+        run: |
+          sudo apt-get install -y libsdl2-2.0-0 libfontconfig1
+          curl --fail --location --retry 3 https://github.com/nesdev-org/MesenCE/releases/download/2.2.1/Mesen_2.2.1_Linux_x64.zip --output "$RUNNER_TEMP/mesen.zip"
+          printf '%s  %s\n' c88ff4d251b407515c43d3332d641927655cd69fb538996b6a21da4509dbb58f "$RUNNER_TEMP/mesen.zip" | sha256sum --check
+          unzip -q "$RUNNER_TEMP/mesen.zip" -d "$RUNNER_TEMP/mesen"
+          chmod +x "$RUNNER_TEMP/mesen/Mesen"
+          python3 tests/mesen_video.py --mesen "$RUNNER_TEMP/mesen/Mesen"
       - name: Play all endings and expanded paths
         working-directory: SNES_Template
         run: |
@@ -58,6 +67,10 @@ jobs:
           python3 tests/rom_menu.py --core "$core" --pal
           python3 tests/rom_splash.py --core "$core"
           python3 tests/rom_splash.py --core "$core" --pal
+          python3 tests/rom_coin.py --core "$core"
+          python3 tests/rom_coin.py --core "$core" --pal
+          python3 tests/rom_intro.py --core "$core"
+          python3 tests/rom_intro.py --core "$core" --pal
           python3 tests/rom_hud.py --core "$core"
           python3 tests/rom_hud.py --core "$core" --pal
           python3 tests/rom_story.py --core "$core"
@@ -76,6 +89,10 @@ jobs:
           python3 tests/rom_scope.py --core "$core" --pal
           python3 tests/rom_hero.py --core "$core"
           python3 tests/rom_hero.py --core "$core" --pal
+          python3 tests/rom_houses.py --core "$core"
+          python3 tests/rom_houses.py --core "$core" --pal
+          python3 tests/rom_sprites.py --core "$core"
+          python3 tests/rom_sprites.py --core "$core" --pal
           python3 tests/rom_torch.py --core "$core"
           python3 tests/rom_torch.py --core "$core" --pal
           python3 tests/rom_daycycle.py --core "$core"
@@ -101,4 +118,5 @@ jobs:
             SNES_Template/build/*.json
             SNES_Template/build/*.png
             SNES_Template/build/*.gif
+            SNES_Template/build/mesen-video.log
           retention-days: 90

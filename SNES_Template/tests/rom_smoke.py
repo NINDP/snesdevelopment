@@ -35,9 +35,10 @@ class Runner:
         self.check_darkness(name,self.e.state())
     def check_darkness(self,name,state):
         mode=state['mode']
+        if mode==6:return  # Journal is an opaque, standalone Mode 1 page.
         if mode==3:cut=world_cut(state)
         elif mode in (2,4,5,6,7,11):
-            if mode==2 and state['dialogue'] in (0,22):return
+            if mode==2 and (state['dialogue']==22 or (state['dialogue']==0 and state['page']<3)):return
             if mode==7 and (state['return_mode']==12 or
                     (state['return_mode']==2 and state['dialogue'] in (0,22))):return
             cut={2:128,4:88,5:64,6:16,7:48,11:64}[mode]
