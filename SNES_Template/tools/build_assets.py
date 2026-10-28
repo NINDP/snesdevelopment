@@ -129,25 +129,134 @@ def map_dungeon():
     d.rectangle((77,89,91,103),outline=10); d.line((80,100,84,92,88,100),fill=11)
     d.rectangle((223,157,241,183),fill=1); lamp(d,24,170)
     return im
-def title():
-    im,d=canvas(); rng=random.Random(1193)
-    colors=list(PALETTE)
-    colors[:7]=[(6,5,8),(13,9,18),(19,14,24),(26,18,16),
-                (34,24,16),(54,38,24),(190,158,96)]
-    im.putpalette([v for c in colors for v in c]+[0]*(768-48))
-    d.rectangle((0,0,255,223),fill=1)
-    for x,color in ((90,2),(60,3),(32,4),(16,5)):
-        d.rectangle((0,0,x,144),fill=color)
-    for x,y,w in ((94,54,24),(122,74,29),(156,46,24),(183,86,35),(223,64,30)):
-        d.rectangle((x,y,x+w,223),fill=0)
-        for yy in range(y+22,176,19):
-            d.rectangle((x+6,yy,x+8,yy+2),fill=5)
-    d.rectangle((0,184,255,223),fill=0)
-    d.line((87,0,87,184),fill=6)
-    for _ in range(32):
-        x=rng.randrange(92,256); y=rng.randrange(24,184)
-        d.point((x,y),fill=2)
+def title(frame=0):
+    """Main menu: moonlit medieval Chernorechye, chapel and torch."""
+    im, d = canvas()
+    colors = [
+        (4, 5, 10),      # 0 deep shadow
+        (11, 12, 24),    # 1 night sky
+        (19, 20, 35),    # 2 farther sky
+        (29, 28, 44),    # 3 hills
+        (41, 40, 53),    # 4 far wood
+        (56, 52, 61),    # 5 weathered wood
+        (76, 65, 63),    # 6 stones
+        (108, 88, 77),   # 7 warm contour
+        (156, 117, 75),  # 8 bronze
+        (207, 152, 83),  # 9 amber
+        (244, 193, 104), # 10 fire
+        (255, 226, 150), # 11 fire core
+        (90, 89, 112),   # 12 mist
+        (47, 54, 69),    # 13 pine
+        (24, 29, 40),    # 14 forest
+        (212, 207, 184), # 15 moon
+    ]
+    im.putpalette([v for color in colors for v in color] + [0] * (768 - 48))
+    d.rectangle((0, 0, 255, 223), fill=1)
+
+    # Unlit night sky with sparse, hand-dithered stars.
+    d.rectangle((0, 0, 255, 92), fill=2)
+    d.polygon([(0, 64), (44, 62), (94, 69), (146, 58), (200, 71), (255, 59), (255, 112), (0, 112)], fill=1)
+    rng = random.Random(1193)
+    for _ in range(28):
+        x, y = rng.randrange(8, 248), rng.randrange(9, 73)
+        if not (x < 196 and y > 19):
+            d.point((x, y), fill=12 if _ % 3 else 7)
+    # A hard-edged moon: no gradients and no expensive effects.
+    d.ellipse((203, 24, 241, 62), fill=12)
+    d.ellipse((207, 27, 237, 57), fill=15)
+    d.ellipse((215, 33, 225, 41), fill=12)
+    d.point((228, 48), fill=12)
+    d.line((203, 62, 240, 62), fill=3)
+
+    # Layered hills and trees behind the chapel.
+    d.polygon([(0, 111), (36, 90), (72, 105), (112, 87), (154, 103), (195, 91), (255, 105), (255, 194), (0, 194)], fill=3)
+    d.polygon([(0, 137), (38, 112), (77, 127), (123, 108), (160, 131), (203, 112), (255, 127), (255, 202), (0, 202)], fill=14)
+    for x, y, r in [(6, 115, 22), (28, 123, 20), (162, 130, 18), (174, 120, 23), (249, 129, 18)]:
+        d.rectangle((x-2, y, x+2, y+r+20), fill=0)
+        for row, span in ((-30, 4), (-21, 9), (-12, 13), (0, 16)):
+            d.polygon([(x, y+row-10), (x-span, y+row+11), (x+span, y+row+11)], fill=13 if x < 170 else 14)
+        d.line((x, y-33, x, y+8), fill=4)
+
+    # Timber chapel with wooden cupola and Orthodox cross.
+    d.polygon([(175, 114), (215, 85), (255, 114)], fill=0)
+    d.polygon([(179, 115), (215, 92), (250, 115)], fill=5)
+    for x in range(183, 252, 9):
+        d.line((x, 113, 215, 93), fill=4)
+    d.rectangle((187, 115, 245, 188), fill=4)
+    for y in range(121, 187, 11):
+        d.line((188, y, 244, y), fill=6)
+    for x in (194, 203, 229, 239):
+        d.line((x, 117, x, 188), fill=3)
+    d.rectangle((210, 137, 225, 181), fill=0)
+    d.rectangle((213, 140, 222, 174), fill=9)
+    d.rectangle((216, 142, 220, 172), fill=10)
+    d.line((217, 139, 217, 175), fill=0)
+    d.line((210, 155, 225, 155), fill=0)
+    d.polygon([(205, 88), (215, 76), (225, 88)], fill=5)
+    d.rectangle((212, 76, 218, 91), fill=4)
+    d.line((215, 63, 215, 81), fill=8, width=2)
+    d.line((209, 69, 221, 69), fill=8, width=2)
+    d.line((211, 76, 219, 74), fill=8)
+
+    # Stairway leading down; strong perspective with only a few shapes.
+    d.polygon([(189, 180), (245, 180), (255, 223), (153, 223)], fill=0)
+    for j in range(6):
+        y = 181 + j*j + 2*j
+        if y > 218: break
+        left = 189 - (y - 180)//2
+        right = 245 + (y - 180)//3
+        d.line((max(0, left), y, min(255, right), y), fill=6 if j%2==0 else 4, width=2)
+    d.line((190, 181, 163, 223), fill=6)
+    d.line((245, 181, 254, 223), fill=6)
+
+    # Lone wanderer at the entrance, holding a torch.
+    d.ellipse((194, 164, 201, 172), fill=0)
+    d.polygon([(194, 172), (201, 172), (207, 195), (187, 195)], fill=0)
+    d.line((193, 193, 191, 201), fill=0, width=3)
+    d.line((201, 193, 205, 200), fill=0, width=3)
+    d.line((192, 178, 182, 173), fill=0, width=3)
+    d.line((182, 177, 180, 160), fill=7, width=2)
+    lean = (0, 1, 2, 1, -1, -2, -1, 1)[frame & 7]
+    tip = (149, 147, 148, 150, 148, 147, 149, 148)[frame & 7]
+    d.polygon([(180+lean, tip), (179+lean, 153), (176, 157),
+               (178, 162), (183, 162), (186, 157), (183, 153)], fill=9)
+    d.polygon([(181+lean, tip+3), (178, 157), (180, 161),
+               (183, 160), (184, 156)], fill=10)
+    d.polygon([(181+lean//2, 154), (179, 158), (181, 161),
+               (183, 158)], fill=11)
+    # Three embers rise, drift and cool over a sixteen-frame cycle.
+    drift = (0, 0, 1, 1, 2, 1, 0, -1)
+    for ember in range(3):
+        age = (frame + ember*5) & 15
+        if age < 13:
+            x = 180 + drift[(age+ember*2) & 7] + ember - 1
+            y = 153 - age*2
+            d.point((x, y), fill=10 if age < 4 else (9 if age < 9 else 8))
+            if age < 3:
+                d.point((x, y+1), fill=9)
+
+    # Menu slab: fixed dark field for clear Cyrillic overlay text.
+    d.rectangle((14, 88, 174, 178), fill=0)
+    d.rectangle((16, 90, 172, 176), outline=6)
+    d.line((17, 90, 53, 90), fill=8)
+    d.line((17, 175, 52, 175), fill=8)
+    d.rectangle((17, 101, 19, 164), fill=4)
+    for y in (112, 136, 160):
+        d.line((36, y, 161, y), fill=3)
+    # Simple rune ornaments in empty corners.
+    for x, y in ((20, 92), (168, 92), (20, 174), (168, 174)):
+        d.point((x, y), fill=10)
+    # Top/bottom framing, separated from text region.
+    d.line((13, 16, 104, 16), fill=5)
+    d.line((112, 16, 162, 16), fill=5)
+    d.rectangle((10, 14, 12, 18), fill=8)
+    d.rectangle((162, 14, 164, 18), fill=8)
+    d.rectangle((0, 198, 255, 223), fill=0)
+    d.line((12, 198, 244, 198), fill=6)
+    d.line((12, 199, 80, 199), fill=8)
+    d.rectangle((242, 197, 244, 200), fill=8)
     return im
+
 def splash():
     im,d=canvas()
     d.polygon([(98,58),(158,58),(128,113)],outline=11,width=3)
@@ -408,6 +517,23 @@ def tile_image(im,dedupe=True,bpp=4,max_tiles=512,palette_tiles=False):
     if dedupe and len(tiles)>max_tiles: raise ValueError('BG exceeds tile budget: '+str(len(tiles)))
     return b''.join(planar(t,bpp) for t in tiles),struct.pack('<%dH'%len(tilemap),*tilemap)
 
+def menu_torch(tiles, tilemap, assembly):
+    # Ten private BG tiles keep animated pixels out of shared/deduplicated tiles.
+    # Runtime uploads only this 16x40 patch (320 bytes) during VBlank.
+    frames = [tile_image(title(frame).crop((176, 128, 192, 168)), False)[0]
+              for frame in range(16)]
+    first_tile = len(tiles)//32
+    if first_tile + 10 > 768:
+        raise ValueError('Menu torch exceeds the background tile budget')
+    entries = list(struct.unpack('<1024H', tilemap))
+    for row in range(5):
+        for column in range(2):
+            entries[(16+row)*32 + 22+column] = first_tile + row*2 + column
+    (OUT/'menu-torch.chr').write_bytes(b''.join(frames))
+    assembly += ['.section "menu_torch" superfree', 'menu_torch_tiles:',
+                 '.incbin "assets/generated/menu-torch.chr"', '.ends', '']
+    return tiles + frames[0], struct.pack('<1024H', *entries)
+
 def main():
     from build_cinematics import scenes, world_scenes
     OUT.mkdir(parents=True,exist_ok=True)
@@ -415,6 +541,8 @@ def main():
     backgrounds=[splash(),title(),*world_scenes()]
     for i,im in enumerate(backgrounds):
         name='bg%d'%i; tiles,tilemap=tile_image(im,max_tiles=768,palette_tiles=i>=2)
+        if i == 1:
+            tiles, tilemap = menu_torch(tiles, tilemap, assembly)
         (OUT/(name+'.chr')).write_bytes(tiles); (OUT/(name+'.map')).write_bytes(tilemap)
         im.convert('RGB').save(OUT/(name+'.png'))
         assembly += ['.section "%s" superfree'%name, name+'_tiles:',

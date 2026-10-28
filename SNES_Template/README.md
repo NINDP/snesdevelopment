@@ -10,6 +10,7 @@
 крестовиной: бег слева направо, семь кадров анимации, плавная прокрутка.
 Заставка NABLA TEAM появляется и гаснет; меню повторяет композицию
 первой игры с тёмным городом, тёплым светом и пунктами слева.
+Факел в главном меню горит: пламя колышется, искры поднимаются и затухают.
 Переработаны деревня и лес: связные дороги и двор, брод, высокие ели,
 избы 64×64 и колодец. Поверхности используют отдельные материалы травы,
 земли, мокрого берега, дерева и камня. Перспектива остаётся на Mode 7;
@@ -156,6 +157,7 @@ make -f Makefile.host test
 make -f Makefile.host sanitize
 python3 -m unittest discover -s tests -p 'test_*.py'
 python3 tools/memory_report.py
+python3 tests/rom_menu.py --core /path/to/snes9x_libretro.so
 python3 tests/rom_smoke.py --core /path/to/snes9x_libretro.so --ending secret
 python3 tests/rom_smoke.py --core /path/to/snes9x_libretro.so --scope --pal
 python3 tests/rom_profile.py --core /path/to/snes9x_libretro.so

@@ -5,6 +5,7 @@
 #include "../include/perspective.h"
 extern u8 bg0_tiles, bg0_tiles_end, bg0_map;
 extern u8 bg1_tiles, bg1_tiles_end, bg1_map, bg1_palette;
+extern u8 menu_torch_tiles;
 extern u8 bg2_tiles, bg2_tiles_end, bg2_map;
 extern u8 bg3_tiles, bg3_tiles_end, bg3_map;
 extern u8 bg4_tiles, bg4_tiles_end, bg4_map;
@@ -34,6 +35,8 @@ static const SkU8 bucket10[61] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1
                                   4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6};
 static SkU16 text_map[VIDEO_TEXT_ENTRIES];
 static SkU8 current_bg = 255, dirty = 1, redraw = 1;
+static SkU8 menu_torch_frame = 0, menu_torch_uploaded = 0;
+static SkU16 menu_torch_vram = 0;
 static SkU16 last_keys[10] = {65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535};
 static SkS16 previous_x = 0, previous_y = 0, previous_enemy_x = 0, previous_enemy_y = 0;
 /* Applied in VBlank: splash and cinematic transitions use master brightness. */
@@ -133,6 +136,10 @@ static void background(SkU8 id) {
         map = &bg1_map;
         palette = &bg1_palette;
         palette_bytes = 256;
+        /* The last ten background tiles belong exclusively to the flame. */
+        menu_torch_vram = VIDEO_BG_TILES +
+            ((&bg1_tiles_end - &bg1_tiles - VIDEO_MENU_TORCH_BYTES) >> 1);
+        menu_torch_frame = menu_torch_uploaded = 0;
         break;
     case 2:
         tiles = &bg2_tiles;
@@ -252,6 +259,11 @@ void video_init(void) {
     setPaletteColor(31, RGB5(29, 24, 15));
 }
 void video_commit(void) {
+    if (current_bg == 1 && menu_torch_frame != menu_torch_uploaded) {
+        dmaCopyVram(&menu_torch_tiles + (SkU16)menu_torch_frame * VIDEO_MENU_TORCH_BYTES,
+                    menu_torch_vram, VIDEO_MENU_TORCH_BYTES);
+        menu_torch_uploaded = menu_torch_frame;
+    }
     if (dirty) {
         if (banner_dirty)
             dmaCopyVram((u8 *)text_map + 24 * 64, VIDEO_TEXT_MAP + 24 * 32, 4 * 64);
@@ -544,14 +556,16 @@ void video_draw(const Game *g, SkU8 scope) {
         text(11, 19, "PRESENTS");
         bgSetScroll(0, 0, g->tick < 30 ? (30 - g->tick) / 2 - 1 : -1);
     } else if (g->mode == G_MENU) {
+        /* Night of Chernorechye: menu positions align with the painted slab. */
+        menu_torch_frame = (g->tick >> 2) & 15;
         text(3, 3, TXT_TITLE);
         text(3, 5, TXT_SUBTITLE);
-        text(3, 7, TXT_YEAR);
-        text(4, 11, TXT_NEW);
-        text(4, 14, TXT_HELP);
-        text(4, 17, TXT_CREDITS);
-        text(2, 11 + g->option * 3, ">");
-        text(3, 25, TXT_PRESS);
+        text(3, 8, TXT_YEAR);
+        text(5, 12, TXT_NEW);
+        text(5, 15, TXT_HELP);
+        text(5, 18, TXT_CREDITS);
+        text(3, 12 + g->option * 3, ">");
+        text(3, 26, TXT_PRESS);
     } else if (g->mode == G_HELP || g->mode == G_CREDITS) {
         panel(2, 26);
         text(1, 3, g->mode == G_HELP ? TXT_HELP_TEXT : TXT_CREDITS_TEXT);

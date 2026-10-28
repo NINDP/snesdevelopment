@@ -12,6 +12,7 @@
 #define VIDEO_TEXT_BYTES 1792
 #define VIDEO_HDMA_BYTES 133
 #define VIDEO_ACTOR_SLOTS 64
+#define VIDEO_MENU_TORCH_BYTES 320
 /* Header (3), 42 four-line bands (126), footer (3), terminator (1). */
 typedef char video_text_size_check[(VIDEO_TEXT_ENTRIES == 32 * VIDEO_TEXT_ROWS) ? 1 : -1];
 typedef char video_hdma_size_check[(VIDEO_HDMA_BYTES == 3 + 42 * 3 + 3 + 1) ? 1 : -1];
