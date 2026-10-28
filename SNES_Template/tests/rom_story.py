@@ -61,7 +61,7 @@ def run(core, pal=False):
         e.tap(1); e.wait_mode(6)
         e.run(12)
         vram = e.lib.retro_get_memory_data(3)
-        digit = struct.unpack('<H', C.string_at(vram+0xb800+19*64+16*2, 2))[0] & 1023
+        digit = struct.unpack('<H', C.string_at(vram+0xb800+26*64+12*2, 2))[0] & 1023
         assert digit == ord('3'), 'Written evidence counter missing from journal'
         e.tap(0); e.wait_mode(3)
         for index in range(3):

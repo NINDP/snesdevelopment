@@ -16,7 +16,11 @@
 Факел в главном меню горит: пламя колышется, искры поднимаются и затухают.
 В исследовании постоянно видны игровые часы, запас факела и страх. Нижняя
 панель отделяет показатели от подсказок и состояния лука; текст больше не
-попадает на границу видеорежимов. Журнал разделён на цель, записи и снаряжение.
+попадает на границу видеорежимов. Журнал — отдельный экран с бронзовой рамкой,
+иконками, красными шкалами и крупными часами. Стрелки влево/вправо переключают
+обзор цели и полные записи; B возвращает в игру. Снаряжение и улики сохранены.
+Прокрутка панорамы больше не делит DMA7 с библиотечной загрузкой спрайтов;
+регрессия Mesen проверяет владение каналами, переходы UI и ночную сцену.
 Переработаны деревня и лес: связные дороги и двор, брод, высокие ели,
 избы 64×64 и колодец. Поверхности используют отдельные материалы травы,
 земли, мокрого берега, дерева и камня. Перспектива остаётся на Mode 7;
@@ -171,6 +175,7 @@ python3 tests/rom_story.py --core /path/to/snes9x_libretro.so
 python3 tests/rom_story.py --core /path/to/snes9x_libretro.so --pal
 python3 tests/rom_splash.py --core /path/to/snes9x_libretro.so
 python3 tests/rom_hud.py --core /path/to/snes9x_libretro.so
+python3 tests/mesen_video.py --mesen /path/to/Mesen
 python3 tests/rom_smoke.py --core /path/to/snes9x_libretro.so --ending secret
 python3 tests/rom_smoke.py --core /path/to/snes9x_libretro.so --scope --pal
 python3 tests/rom_profile.py --core /path/to/snes9x_libretro.so

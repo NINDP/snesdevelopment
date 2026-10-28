@@ -115,7 +115,7 @@ def run(core, pal=False, allow_cadence_drops=False):
         e.run(12)
         capture('four-creatures')
         oam = C.string_at(e.memory + oam_address, 544)
-        slots = (50, 60, 62, 64)
+        slots = (56, 60, 62, 64)
         assert all(oam[slot*4+1] != 240 for slot in slots), 'A fourth-night actor is missing from OAM'
 
         previous = stamp()

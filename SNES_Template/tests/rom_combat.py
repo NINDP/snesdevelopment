@@ -24,7 +24,8 @@ def run(core, pal=False):
 
     def capture(name):
         e.want_frame = True
-        e.run(1)
+        # Wait for the complete perspective update and its VBlank publish.
+        e.run(3)
         e.want_frame = False
         assert e.frame is not None
         im = e.frame.copy()

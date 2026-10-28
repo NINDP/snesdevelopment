@@ -49,6 +49,10 @@ def profile(core, label, pal=False):
             runner.cups(); runner.inspect(4); runner.choose(0)
         if name.endswith('-walk'):
             runner.walk(124, 176)
+        # R also triggers a shove on its initial edge. Finish that one-shot
+        # effect during warmup so this scenario measures sustained turning.
+        if name == 'lit-sweep':
+            emulator.buttons = {11, 4}
         emulator.run(120)
         previous = stamp()
         updates = 0
@@ -74,11 +78,11 @@ def profile(core, label, pal=False):
         print(f'PROFILE {name}: updates={updates}/600, max_gap={max_gap}, '
               f'audio_peak={emulator.audio_peak}', flush=True)
 
-        # Dense outdoor scenes and the combat room can use two video frames for a
+        # Scenery walks with per-scanline OBJ admission can use two video frames for a
         # complete perspective update. Simulation still catches up at 60 Hz;
         # the four-night test independently checks elapsed world/logic time.
         # Static scenes and the lighter walks retain the one-frame budget.
-        heavy = name in ('village-walk', 'forest-walk', 'cellar-walk')
+        heavy = name in ('village-walk', 'forest-walk', 'chapel-walk', 'cellar-walk')
         minimum_updates = 300 if heavy else 600
         allowed_gap = 2 if heavy else 1
         if updates < minimum_updates or max_gap > allowed_gap:

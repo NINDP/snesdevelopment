@@ -44,6 +44,11 @@ def run(core, pal=False):
                 assert e.state()['day_seconds'] == before, 'World clock advanced behind UI'
                 if repeat == 0 and mode == 6:
                     capture('journal')
+                    e.tap(7); e.run(16)
+                    assert e.state()['journal_page'] == 1, 'Full notes page did not open'
+                    capture('notes')
+                    e.tap(6); e.run(16)
+                    assert e.state()['journal_page'] == 0, 'Overview page did not return'
                 e.tap(button); e.wait_mode(3); e.run(12)
                 assert C.string_at(vram, 0xa000) == original, ('UI exit corrupted world VRAM', repeat, mode)
         capture('after-24-exits')

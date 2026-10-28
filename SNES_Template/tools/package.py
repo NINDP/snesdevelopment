@@ -24,6 +24,21 @@ def main():
     if actual!=expected or len(records)!=8: raise ValueError('Eight distinct ROM checks are required')
     if any(r.get('rom_sha256')!=hashlib.sha256(rom).hexdigest() for r in records):
         raise ValueError('Reports belong to another ROM build; run checks again')
+    mesen=json.loads((ROOT/'build/mesen-video.json').read_text())
+    if (mesen.get('rom_sha256')!=hashlib.sha256(rom).hexdigest() or
+        any(mesen.get(key)!=0 for key in ('collisions','visible_dma','late_publish','sprite_overflow')) or
+        mesen.get('horizon_samples',0)<3 or mesen.get('horizon_corrupt_pixels',-1)!=0 or
+        mesen.get('torch_depth_failures',-1)!=0 or mesen.get('torch_depth_checks',0)<100 or
+        mesen.get('house_failures',-1)!=0 or mesen.get('house_checks',0)<100 or
+        mesen.get('maximum_tiles_per_scanline',999)>34 or mesen.get('world_samples',0)<100 or
+        mesen.get('journal_entries',0)<12 or mesen.get('pause_entries',0)<12 or
+        not all(mesen.get(key) for key in ('night','overview','notes'))):
+        raise ValueError('Missing, stale or failing Mesen video regression')
+    for region in ('ntsc','pal'):
+        houses=json.loads((ROOT/'build'/('houses-regression-'+region+'.json')).read_text())
+        if (houses.get('rom_sha256')!=hashlib.sha256(rom).hexdigest() or
+            houses.get('house_geometry_checks',0)<400 or houses.get('missing_or_shrunken_houses')!=0):
+            raise ValueError('Missing, stale or failing house geometry regression: '+region)
     for feature in ('scope','hero','torch','daycycle','combat','survival','interaction','locations'):
         for region in ('ntsc','pal'):
             report=json.loads((ROOT/'build'/('%s-regression-%s.json'%(feature,region))).read_text())
@@ -39,8 +54,8 @@ def main():
         report=json.loads((ROOT/'build'/('profile-optimized'+suffix+'.json')).read_text())
         if report.get('rom_sha256')!=hashlib.sha256(rom).hexdigest():
             raise ValueError('Cadence profile belongs to another ROM: '+suffix)
-        if len(report['cadence'])!=8 or any(r['updates']<(300 if r['scenario'] in ('village-walk','forest-walk','cellar-walk') else 600)
-                or r['max_vblank_gap']>(2 if r['scenario'] in ('village-walk','forest-walk','cellar-walk') else 1)
+        if len(report['cadence'])!=8 or any(r['updates']<(300 if r['scenario'] in ('village-walk','forest-walk','chapel-walk','cellar-walk') else 600)
+                or r['max_vblank_gap']>(2 if r['scenario'] in ('village-walk','forest-walk','chapel-walk','cellar-walk') else 1)
                 or (r.get('heartbeat_expected',True) and r['audio_peak']<=0) for r in report['cadence']):
             raise ValueError('Cadence/audio regression failed: '+suffix)
     lines=['# Проверка финальной сборки','',

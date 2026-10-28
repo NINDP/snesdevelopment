@@ -6,6 +6,12 @@
 extern u8 bg0_tiles, bg0_tiles_end, bg0_map;
 extern u8 bg1_tiles, bg1_tiles_end, bg1_map, bg1_palette;
 extern u8 menu_torch_tiles;
+extern u8 journal_tiles, journal_tiles_end, journal_map, journal_palette;
+extern u8 intro_actor0, intro_actor1, intro_actor2, intro_actor3;
+extern u8 intro_actor4, intro_actor5, intro_actor6, intro_actor7;
+static u8 *const intro_actors[8] = {&intro_actor0,&intro_actor1,&intro_actor2,&intro_actor3,
+                                  &intro_actor4,&intro_actor5,&intro_actor6,&intro_actor7};
+static SkU8 intro_pose = 0, intro_uploaded = 255;
 #define SPLASH_FRAME(n) extern u8 splash_frame##n;
 SPLASH_FRAME(0) SPLASH_FRAME(1) SPLASH_FRAME(2) SPLASH_FRAME(3)
 SPLASH_FRAME(4) SPLASH_FRAME(5) SPLASH_FRAME(6) SPLASH_FRAME(7)
@@ -94,13 +100,6 @@ static void panel(SkU8 row, SkU8 count) {
     ui_tile(0, bottom, 267);
     ui_tile(31, bottom, 268);
 }
-static void meter(SkU8 x, SkU8 y, SkU8 amount) {
-    SkU8 i;
-    if (!redraw)
-        return;
-    for (i = 0; i < 12; ++i)
-        ui_tile(x + i, y, amount >= i * 2 + 1 ? 269 : 270);
-}
 static void text_n(SkU8 x, SkU8 y, const char *value, SkU16 limit) {
     SkU8 start = x, ch;
     if (!redraw || !value)
@@ -140,7 +139,7 @@ static void number(SkU8 x, SkU8 y, SkU16 value) {
 }
 static void draw_clock(SkU8 x, SkU8 y, const Game *g) {
     SkU8 hour = g->day_seconds >> 5;
-    SkU8 minute = ((g->day_seconds & 31) * 60) >> 5;
+    SkU8 minute = ((g->day_seconds & 31) * 60) >> 5, i, digit;
     char value[6];
     if (!redraw)
         return;
@@ -150,20 +149,35 @@ static void draw_clock(SkU8 x, SkU8 y, const Game *g) {
     value[3] = '0' + minute / 10;
     value[4] = '0' + minute % 10;
     value[5] = 0;
-    text(x, y, value);
+    for (i = 0; i < 5; ++i) {
+        digit = value[i] == ':' ? 10 : value[i] - '0';
+        ui_tile(x+i, y, 273 + digit*2);
+        ui_tile(x+i, y+1, 274 + digit*2);
+    }
 }
-static void rule(SkU8 row) {
-    SkU8 x;
-    if (redraw)
-        for (x = 2; x < 30; ++x)
-            ui_tile(x, row, 261);
+static void tint(SkU8 x, SkU8 y, SkU8 width, SkU8 rows, SkU8 palette) {
+    SkU8 dx, dy;
+    SkU16 *tile;
+    if (!redraw) return;
+    for (dy = 0; dy < rows; ++dy)
+        for (dx = 0; dx < width; ++dx) {
+            tile = text_map + (SkU16)(y+dy)*32 + x+dx;
+            if (*tile) *tile = (*tile & 0xe3ff) | ((SkU16)palette << 10);
+        }
 }
-static void text_box(SkU8 x, SkU8 y, const char *value, SkU8 width, SkU8 rows) {
+static void journal_meter(SkU8 x, SkU8 y, SkU8 amount) {
+    SkU8 i, full = (amount + 19) / 20;
+    if (!redraw) return;
+    for (i = 0; i < 6; ++i)
+        text_map[(SkU16)y*32+x+i] = (i < full ? 271 : 272) | (6 << 10) | BG_TIL_PRIO;
+}
+static void text_box(SkU8 x, SkU8 y, const char *value, SkU8 width, SkU8 rows, SkU8 flow) {
     SkU8 column = 0, row = 0, length, i;
     if (!redraw || !value)
         return;
     while (*value && row < rows) {
         if (*value == '\n') {
+            if (flow) { ++value; if (column && column < width) ++column; continue; }
             ++value; ++row; column = 0;
             continue;
         }
@@ -195,6 +209,13 @@ static void background(SkU8 id) {
     if (current_bg >= 10 && current_bg <= 13)
         perspective_leave();
     switch (id) {
+    case 14:
+        tiles = &journal_tiles;
+        end = &journal_tiles_end;
+        map = &journal_map;
+        palette = &journal_palette;
+        palette_bytes = 64;
+        break;
     case 0:
         tiles = &bg0_tiles;
         end = &bg0_tiles_end;
@@ -280,6 +301,11 @@ static void background(SkU8 id) {
     }
     setScreenOff();
     REG_HDMAEN = 0;
+    if (id == 6) {
+        dmaCopyVram(&intro_actor0, VIDEO_OBJ_TILES, 1024);
+        dmaCopyCGram(&sprite_palette, 128, 32);
+        intro_uploaded = intro_pose = 0;
+    }
     bgInitTileSet(0, tiles, palette, 0, id == 6 ? 32768 : end - tiles, palette_bytes,
                   BG_16COLORS, VIDEO_BG_TILES);
     bgInitMapSet(0, map, map_bytes, map_size, VIDEO_BG_MAP);
@@ -291,14 +317,21 @@ static void background(SkU8 id) {
         bgSetScroll(1, 0, -1);
     }
     setPaletteColor(0, 0);
-    setPaletteColor(29, RGB5(28, 28, 24));
-    setPaletteColor(30, RGB5(1, 2, 3));
-    setPaletteColor(31, RGB5(29, 24, 15));
+    if (id != 14) {
+        setPaletteColor(29, RGB5(28, 28, 24));
+        setPaletteColor(30, RGB5(1, 2, 3));
+        setPaletteColor(31, RGB5(29, 24, 15));
+    } else {
+        setMode(BG_MODE1, BG3_MODE1_PRIORITY_HIGH);
+        REG_TM = 0x05; /* Journal artwork + text only; no leftover actors. */
+    }
     setPaletteColor(142, RGB5(31, 13, 2));
     current_bg = id;
     scene_age = 0;
     /* Keep the first card dark while the initial draw prepares its reveal. */
-    if (id == 0)
+    if (id == 14)
+        REG_INIDISP = 0x80; /* Publish the complete journal text before reveal. */
+    else if (id == 0)
         REG_INIDISP = 0;
     else
         setScreenOn();
@@ -338,6 +371,9 @@ void video_init(void) {
 }
 void video_commit(void) {
     SkU8 full_ui = dirty && !banner_dirty;
+    /* DMA0 is also the outdoor parallax HDMA channel. Stop HDMA before any
+       normal transfer, then perspective_commit publishes the next frame. */
+    REG_HDMAEN = 0;
     if (current_bg == 0 && splash_frame != splash_uploaded) {
         dmaCopyVram(splash_frames[splash_frame], VIDEO_BG_MAP, 2048);
         splash_uploaded = splash_frame;
@@ -346,6 +382,10 @@ void video_commit(void) {
         dmaCopyVram(&menu_torch_tiles + (SkU16)menu_torch_frame * VIDEO_MENU_TORCH_BYTES,
                     menu_torch_vram, VIDEO_MENU_TORCH_BYTES);
         menu_torch_uploaded = menu_torch_frame;
+    }
+    if (current_bg == 6 && !full_ui && intro_pose != intro_uploaded) {
+        dmaCopyVram(intro_actors[intro_pose], VIDEO_OBJ_TILES, 1024);
+        intro_uploaded = intro_pose;
     }
     if (dirty) {
         if (banner_dirty)
@@ -443,15 +483,27 @@ static void draw_actors(const Game *g) {
     previous_enemy_x = g->enemy_x;
     previous_enemy_y = g->enemy_y;
 }
+static void draw_kirill(SkS16 x, SkS16 y, SkU8 flip) {
+    SkU8 i, column;
+    for (i = 0; i < 6; ++i) {
+        column = flip ? 1-(i&1) : (i&1);
+        oamSet(i*4, x-16+column*16, y-48+(i>>1)*16, 2, flip, 0, i*2, 0);
+        oamSetEx(i*4, OBJ_SMALL, OBJ_SHOW);
+    }
+}
+static void draw_coin(SkS16 x, SkS16 feet, SkU16 roll) {
+    /* A coin rolls on its rim: the face keeps its outline while the stamped
+       mark rotates. One-pixel hops follow the uneven floor. */
+    sprite(8, x - 8, feet - 15 - ((roll & 7) == 3), 64 + ((roll >> 2) & 3) * 2);
+}
 static void draw_corridor(const Game *g) {
     SkS16 scroll = game_corridor_scroll(g);
-    SkU16 tile = g->x == previous_x ? 192 : 384 + ((g->tick / 6) % 7) * 2;
+    intro_pose = g->x == previous_x ? 0 : 1 + (g->tick / 6) % 7;
     hide();
     camera_x = scroll;
-    oamSet(0, g->x - scroll - 8, g->y - 32, 2, g->direction == 6, 0, tile, 0);
-    oamSetEx(0, OBJ_SMALL, OBJ_SHOW);
-    oamSet(40, g->x - scroll - 8, g->y - 16, 2, g->direction == 6, 0, tile + 32, 0);
-    oamSetEx(40, OBJ_SMALL, OBJ_SHOW);
+    draw_kirill(g->x-scroll, g->y, g->direction == 6);
+    if (g->x < CORRIDOR_END - 12)
+        draw_coin(g->x + 26 - scroll, g->y, g->x - CORRIDOR_START);
     previous_x = g->x;
 }
 static void draw_cinematic(const Game *g) {
@@ -459,17 +511,11 @@ static void draw_cinematic(const Game *g) {
     if (g->dialogue != D_PROLOG)
         return;
     if (g->page == 0) {
-        sprite(0, CORRIDOR_START - 8, 78, 192);
-        sprite(10, CORRIDOR_START - 8, 94, 224);
-        sprite(3, 106, 105, 64 + ((g->tick >> 3) & 3) * 2);
-        if (g->tick < 80 && ((g->tick >> 2) & 1)) {
-            sprite(8, 177, 77, 196);
-            sprite(11, 177, 93, 228);
-        }
-    } else if (g->page >= 3) {
-        sprite(0, 104, 89, 104);
-        sprite(10, 104, 105, 136);
-        actor(1, 6, 48, 58, 256);
+        SkU16 roll = g->tick < 104 ? g->tick : 104;
+        camera_x = game_corridor_scroll(g);
+        intro_pose = g->x > CORRIDOR_START && g->tick < 128 ? 1 + (g->tick / 6) % 7 : 0;
+        draw_kirill(g->x - camera_x, 110, 0);
+        draw_coin(CORRIDOR_START + 26 + roll - camera_x, 110, roll);
     }
 }
 static void draw_torch(const Game *g) {
@@ -499,6 +545,8 @@ void video_draw(const Game *g, SkU8 scope) {
             current_bg = 10 + g->room;
             memset(last_keys, 255, sizeof(last_keys));
             time_banner = 255;
+        }
+        if (time_banner == 255) {
             context_maps = g->room == 0 ? &interaction0_maps :
                 (g->room == 1 ? &interaction1_maps : (g->room == 2 ? &interaction2_maps : &interaction3_maps));
         }
@@ -554,15 +602,17 @@ void video_draw(const Game *g, SkU8 scope) {
     }
     time_banner = 255;
     projected = (g->mode >= G_DIALOGUE && g->mode <= G_PAUSE) || g->mode == G_BELL;
-    if (g->mode == G_DIALOGUE && (g->dialogue == D_PROLOG || g->dialogue == D_MODERN))
+    if (g->mode == G_JOURNAL)
+        projected = 0;
+    if (g->mode == G_DIALOGUE && ((g->dialogue == D_PROLOG && g->page < 3) || g->dialogue == D_MODERN))
         projected = 0;
     if (g->mode == G_PAUSE && g->return_mode == G_CORRIDOR)
         projected = 0;
     if (g->mode == G_PAUSE && g->return_mode == G_DIALOGUE &&
-        (g->dialogue == D_PROLOG || g->dialogue == D_MODERN))
+        ((g->dialogue == D_PROLOG && g->page < 3) || g->dialogue == D_MODERN))
         projected = 0;
     near = SK_NONE;
-    keys[0] = g->mode | ((SkU16)g->option << 8);
+    keys[0] = g->mode | ((SkU16)(g->mode == G_JOURNAL ? g->journal_page : g->option) << 8);
     keys[1] = g->dialogue | ((SkU16)g->page << 8);
     keys[2] = g->revealed | ((SkU16)g->room << 8);
     keys[3] = (bucket5[g->oil]) | ((SkU16)(bucket5[g->fear]) << 5) | ((SkU16)g->lamp << 11);
@@ -587,9 +637,11 @@ void video_draw(const Game *g, SkU8 scope) {
         bg = 0;
     if (g->mode == G_MENU || g->mode == G_HELP || g->mode == G_CREDITS || g->mode == G_END)
         bg = 1;
+    if (g->mode == G_JOURNAL)
+        bg = 14;
     corridor = g->mode == G_CORRIDOR ||
                (g->mode == G_PAUSE && g->return_mode == G_CORRIDOR);
-    cinematic = g->mode == G_DIALOGUE && (g->dialogue == D_PROLOG || g->dialogue == D_MODERN);
+    cinematic = g->mode == G_DIALOGUE && ((g->dialogue == D_PROLOG && g->page < 3) || g->dialogue == D_MODERN);
     if (cinematic)
         bg = g->dialogue == D_MODERN ? 7 : (g->page < 3 ? 6 + g->page : 9);
     if (g->mode == G_PAUSE && g->return_mode == G_DIALOGUE && g->dialogue == D_MODERN)
@@ -717,53 +769,57 @@ void video_draw(const Game *g, SkU8 scope) {
         if (g->notice == 6)
             text(1, 25, TXT_PUZZLE_WRONG);
     } else if (g->mode == G_JOURNAL) {
-        panel(2, 26);
-        text(2, 3, TXT_JOURNAL);
-        draw_clock(25, 3, g);
-        text(2, 4, TXT_WORLD_DAY);
-        number(9, 4, g->day_number);
-        text(18, 4, game_time_name(g));
-        rule(5);
-        text(2, 6, TXT_OIL);
-        number(10, 6, g->oil);
-        text(18, 6, TXT_FEAR);
-        number(27, 6, g->fear);
-        meter(2, 7, bucket5[g->oil]);
-        meter(18, 7, bucket5[g->fear]);
-        text(2, 9, TXT_GOAL);
-        text_box(1, 10, game_goal(g), 30, 2);
-        text_box(1, 13, game_journal(g), 30, 4);
-        rule(17);
-        text(2, 18, TXT_ARROWS);
-        number(12, 18, g->ammo);
-        text(18, 18, TXT_WARDS);
-        number(28, 18, g->wards);
-        text(2, 20, TXT_MEMORIES);
-        number(12, 20,
+        /* A dedicated Mode 1 page keeps the journal independent of the
+           world renderer and gives every group its own space and palette. */
+        draw_clock(25, 2, g);
+        text(5, 4, TXT_WORLD_DAY);
+        number(11, 4, g->day_number);
+        tint(11, 4, 3, 1, 6);
+        text(30 - strlen(game_time_name(g)), 4, game_time_name(g));
+        text(5, 7, TXT_OIL);
+        text(21, 7, TXT_FEAR);
+        journal_meter(5, 9, g->oil);
+        journal_meter(21, 9, g->fear);
+        number(12, 9, g->oil);
+        number(28, 9, g->fear);
+        text(21, 2, g->journal_page ? "2/2" : "1/2");
+        tint(21, 2, 3, 1, 5);
+        text(5, 11, g->journal_page ? TXT_NOTES_SHORT : TXT_GOAL);
+        tint(5, 11, 6, 1, 6);
+        if (g->journal_page) {
+            text_box(5, 12, game_journal(g), 25, 7, 1);
+        } else {
+            text_box(5, 12, game_goal(g), 25, 4, 0);
+            text_box(5, 17, game_journal(g), 25, 2, 1);
+            tint(5, 17, 25, 2, 5);
+            text(30, 18, ">");
+            tint(30, 18, 1, 1, 6);
+        }
+        text(4, 20, TXT_ARROWS);
+        number(13, 20, g->ammo);
+        text(20, 20, TXT_WARDS);
+        number(28, 20, g->wards);
+        text(4, 22, TXT_MEMORIES);
+        number(13, 22,
                (g->memories & 1 ? 1 : 0) + (g->memories & 2 ? 1 : 0) + (g->memories & 4 ? 1 : 0));
-        text(2, 19, TXT_EVIDENCE);
-        number(16, 19, (g->evidence & 1 ? 1 : 0) + (g->evidence & 2 ? 1 : 0) +
+        text(14, 22, "/3");
+        text(20, 22, g->room == 3 ? TXT_NODES : (g->room == 1 ? TXT_SIGNS : TXT_BELL_STATUS));
+        number(28, 22, g->room == 3 ?
+               (g->rune_mask & 1 ? 1 : 0) + (g->rune_mask & 2 ? 1 : 0) + (g->rune_mask & 4 ? 1 : 0) :
+               (g->room == 1 ? g->forest_step : (g->memories & 8 ? 3 : g->bell_step)));
+        text(29, 22, "/3");
+        text(4, 24, TXT_NIGHTS);
+        number(13, 24, g->nights);
+        text(20, 24, TXT_KILLS);
+        number(28, 24, g->kills);
+        text(2, 26, "<>");
+        text(6, 26, TXT_EVIDENCE_SHORT);
+        number(12, 26, (g->evidence & 1 ? 1 : 0) + (g->evidence & 2 ? 1 : 0) +
                        (g->evidence & 4 ? 1 : 0));
-        text(17, 19, "/3");
-        text(13, 20, "/3");
-        text(18, 20, g->room == 3 ? TXT_NODES : (g->room == 1 ? TXT_SIGNS : TXT_BELL_STATUS));
-        if (g->room == 3) {
-            number(22, 20, g->charge[0]);
-            text(24, 20, "/");
-            number(25, 20, g->charge[1]);
-            text(27, 20, "/");
-            number(28, 20, g->charge[2]);
-        } else if (g->room == 1) {
-            number(26, 20, g->forest_step);
-            text(27, 20, "/3");
-        } else
-            number(28, 20, g->memories & 8 ? 3 : g->bell_step);
-        text(2, 22, TXT_NIGHTS);
-        number(12, 22, g->nights);
-        text(18, 22, TXT_KILLS);
-        number(28, 22, g->kills);
-        text_box(2, 24, g->notice ? notice_text(g->notice) : game_time_hint(g), 28, 2);
-        text(2, 26, TXT_BACK);
+        text(13, 26, "/3");
+        text(23, 26, "B");
+        tint(23, 26, 1, 1, 6);
+        text(25, 26, TXT_BACK_SHORT);
     } else if (g->mode == G_PAUSE) {
         panel(6, 22);
         text(1, 7, TXT_PAUSE);

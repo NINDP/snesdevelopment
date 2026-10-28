@@ -174,58 +174,60 @@ hero_draw:
 torch_oam_draw:
     lda 4,s
     tax
-    lda.l torch_oam_frames+0,x
-    sta.l oamMemory+208
-    lda.l torch_oam_frames+2,x
-    sta.l oamMemory+210
-    lda.l torch_oam_frames+4,x
-    sta.l oamMemory+212
-    lda.l torch_oam_frames+6,x
-    sta.l oamMemory+214
-    lda.l torch_oam_frames+8,x
-    sta.l oamMemory+216
-    lda.l torch_oam_frames+10,x
-    sta.l oamMemory+218
-    lda.l torch_oam_frames+12,x
-    sta.l oamMemory+220
-    lda.l torch_oam_frames+14,x
-    sta.l oamMemory+222
-    lda.l torch_oam_frames+16,x
-    sta.l oamMemory+224
-    lda.l torch_oam_frames+18,x
-    sta.l oamMemory+226
-    lda.l torch_oam_frames+20,x
-    sta.l oamMemory+228
-    lda.l torch_oam_frames+22,x
-    sta.l oamMemory+230
-    lda.l torch_oam_frames+24,x
-    sta.l oamMemory+232
-    lda.l torch_oam_frames+26,x
-    sta.l oamMemory+234
-    lda.l torch_oam_frames+28,x
-    sta.l oamMemory+236
-    lda.l torch_oam_frames+30,x
-    sta.l oamMemory+238
+    lda.l torch_slot
+    asl a
+    asl a
+    tay
+    phb
     sep #$20
-    lda #2
-    sta.l oamMemory+525
-    lda #0
-    sta.l oamMemory+526
+    lda #$7e
+    pha
+    plb
     rep #$20
+    ; The torch shares its owner's depth group, after the six hero cells.
+    ; DB=7E permits absolute,Y stores while X indexes banked ROM frames.
+    .rept 8 INDEX q
+    lda.l torch_oam_frames+q*2,x
+    sta.w oamMemory+q*2,y
+    .endr
+    lda.l torch_slot
+    and #3
+    tax
+    sep #$20
+    lda.l torch_high_first,x
+    sta.b tcc__r0
+    lda.l torch_high_second,x
+    sta.b tcc__r0h
+    rep #$20
+    lda.l torch_slot
+    lsr a
+    lsr a
+    tax
+    sep #$20
+    lda.w oamMemory+512,x
+    and.b tcc__r0
+    sta.w oamMemory+512,x
+    lda.w oamMemory+513,x
+    and.b tcc__r0h
+    sta.w oamMemory+513,x
+    rep #$20
+    plb
     rtl
 torch_oam_hide:
+    lda.l torch_slot
+    asl a
+    asl a
+    tax
     sep #$20
     lda #240
-    sta.l oamMemory+209
-    sta.l oamMemory+213
-    sta.l oamMemory+217
-    sta.l oamMemory+221
-    sta.l oamMemory+225
-    sta.l oamMemory+229
-    sta.l oamMemory+233
-    sta.l oamMemory+237
+    sta.l oamMemory+1,x
+    sta.l oamMemory+5,x
+    sta.l oamMemory+9,x
+    sta.l oamMemory+13,x
     rep #$20
     rtl
+torch_high_first: .db $00,$03,$0f,$3f
+torch_high_second: .db $ff,$fc,$f0,$c0
 hero_oam_template:
     .db 112,116,0,$2a,128,116,2,$2a
     .db 112,132,4,$2a,128,132,6,$2a
@@ -236,6 +238,235 @@ hero_high_third: .db $ff,$ff,$ff,$fc
 perspective_oam_clearbits: .db $fc,$f3,$cf,$3f
 perspective_oam_sizes: .db 2,8,32,128
 perspective_oam_ninth: .db 1,4,16,64
+.ends
+
+; Scatter a packed 16x64 animation into the two left columns of the OBJ
+; atlas. Eight 64-byte DMAs replace 512 bytes, at most once per four ticks.
+.section "torch_upload" superfree
+torch_upload:
+    sep #$20
+    lda #$80
+    sta.l $2115
+    lda 6,s
+    sta.l $4304
+    rep #$20
+    lda #$1801
+    sta.l $4300
+    lda 4,s
+    sta.l $4302
+    ldx #$6600
+    ldy #8
+-:
+    txa
+    sta.l $2116
+    lda #64
+    sta.l $4305
+    sep #$20
+    lda #1
+    sta.l $420b
+    rep #$20
+    txa
+    clc
+    adc #$100
+    tax
+    dey
+    bne -
+    rtl
+.ends
+
+; Conservative 16-scanline bands enforce the 34-sliver SNES limit.
+; Hero uses four slivers in bands7..10; particles/projectiles/enemies have
+; a separate reservation. Lower LOD is chosen before emitting an object.
+.section "perspective_budget" superfree
+perspective_budget_reset:
+    sep #$20
+    lda 4,s
+    sta.l sprite_band_limit
+    lda #0
+    ldx #10
+-:
+    sta.l sprite_bands,x
+    dex
+    bpl -
+    lda #2
+    ldx #10
+-:
+    sta.l sprite_bands,x
+    dex
+    cpx #5
+    bcs -
+    lda #6
+    ldx #10
+-:
+    sta.l sprite_bands,x
+    dex
+    cpx #7
+    bcs -
+    rep #$20
+    rtl
+perspective_lod:
+    stz.b tcc__r3
+    lda #16
+    sta.b tcc__r3h
+    lda #2
+    sta.b tcc__r4
+    lda 6,s
+    sta.b tcc__r4h
+    lda 4,s
+    beq lod_npc
+    cmp #1
+    beq lod_tree
+    cmp #4
+    beq lod_house
+    cmp #3
+    beq lod_prop
+    cmp #5
+    beq lod_prop
+    bra lod_try
+lod_npc:
+    lda.b tcc__r4h
+    cmp #132
+    bmi lod_try
+    lda #48
+    bra lod_medium
+lod_prop:
+    lda.b tcc__r4h
+    cmp #140
+    bmi lod_try
+    lda #32
+    bra lod_medium
+lod_tree:
+    lda.b tcc__r4h
+    cmp #105
+    bmi lod_try
+    cmp #126
+    bmi lod_32
+    lda #2
+    sta.b tcc__r3
+    lda #64
+    sta.b tcc__r3h
+    lda #4
+    sta.b tcc__r4
+    bra lod_try
+lod_house:
+    lda.b tcc__r4h
+    cmp #95
+    bmi lod_try
+    cmp #130
+    bmi lod_32
+    lda #2
+    sta.b tcc__r3
+    lda #64
+    sta.b tcc__r3h
+    lda #8
+    sta.b tcc__r4
+    bra lod_try
+lod_32:
+    lda #32
+lod_medium:
+    sta.b tcc__r3h
+    lda #1
+    sta.b tcc__r3
+    lda #4
+    sta.b tcc__r4
+lod_try:
+    lda.b tcc__r4
+    pha
+    lda.b tcc__r4h
+    dec a
+    pha
+    inc a
+    sec
+    sbc.b tcc__r3h
+    pha
+    jsl perspective_reserve
+    pla
+    pla
+    pla
+    lda.b tcc__r0
+    bne lod_success
+    lda.b tcc__r3
+    beq lod_failed
+    dec a
+    sta.b tcc__r3
+    beq lod_small
+    lda #32
+    sta.b tcc__r3h
+    lda #4
+    sta.b tcc__r4
+    bra lod_try
+lod_small:
+    lda #16
+    sta.b tcc__r3h
+    lda #2
+    sta.b tcc__r4
+    bra lod_try
+lod_success:
+    lda.b tcc__r3
+    inc a
+    sta.b tcc__r0
+lod_failed:
+    rtl
+perspective_reserve:
+    lda 6,s
+    bmi reserve_invisible
+    lda 4,s
+    cmp #176
+    bpl reserve_invisible
+    cmp #0
+    bpl +
+    lda #0
++:
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    sta.b tcc__r1
+    lda 6,s
+    cmp #176
+    bmi +
+    lda #175
++:
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    sta.b tcc__r1h
+    lda 8,s
+    sta.b tcc__r2
+    ldx.b tcc__r1
+    sep #$20
+reserve_check:
+    lda.l sprite_bands,x
+    clc
+    adc.b tcc__r2
+    cmp.l sprite_band_limit
+    bcc +
+    beq +
+    rep #$20
+    lda #0
+    sta.b tcc__r0
+    rtl
++:
+    inx
+    cpx.b tcc__r1h
+    bcc reserve_check
+    beq reserve_check
+    ldx.b tcc__r1
+reserve_add:
+    lda.l sprite_bands,x
+    clc
+    adc.b tcc__r2
+    sta.l sprite_bands,x
+    inx
+    cpx.b tcc__r1h
+    bcc reserve_add
+    beq reserve_add
+    rep #$20
+reserve_invisible:
+    lda #1
+    sta.b tcc__r0
+    rtl
 .ends
 
 ; Four adjacent scenery cells in one ABI call. The high-table mask preserves
