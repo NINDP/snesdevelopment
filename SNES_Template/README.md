@@ -4,7 +4,7 @@
 Кирилл спускается в подвал НовГУ и попадает в тело Всеволода в Черноречье,
 1193 год. Нужно вернуть хозяину тела память и найти путь домой.
 
-Сценарий сокращён со 177 до **65 экранов**. Во вступлении события показаны
+Текущий сценарий содержит **79 экранов в 44 группах сцен**. Во вступлении события показаны
 спортзалом из первой части, проходом по коридору к лестнице, подвалом
 и отражением у реки. Между спортзалом и лестницей герой управляется
 крестовиной: бег слева направо, семь кадров анимации, плавная прокрутка.
@@ -22,9 +22,12 @@
 лица, одежду, дыхание и моргание. Персонажи заменены по предоставленному
 спрайт-листу: есть фронт, оба профиля и спина, жители поворачиваются к герою. Плотные сцены деревни и леса дают
 30 FPS NTSC / 25 FPS PAL; симуляция работает в 60 тактов/с.
-Сохранены 37 групп сцен, загадки, четыре решения и три концовки.
+Сохранены загадки, четыре решения и три концовки. Ранние решения можно
+исправить повторным разговором. Плохой финал требует явной сделки с Сердцем;
+три письменных свидетельства открывают возвращение Кирилла домой.
 
 Сюжет — [STORY.md](docs/STORY.md), полный текст — [SCENES.md](docs/SCENES.md).
+Сверка с DOCX и объяснение связей — [STORY_AUDIT.md](docs/STORY_AUDIT.md).
 Исходники графики и промпты — [assets/cinematics/README.md](assets/cinematics/README.md).
 
 ## Запуск
@@ -158,6 +161,8 @@ make -f Makefile.host sanitize
 python3 -m unittest discover -s tests -p 'test_*.py'
 python3 tools/memory_report.py
 python3 tests/rom_menu.py --core /path/to/snes9x_libretro.so
+python3 tests/rom_story.py --core /path/to/snes9x_libretro.so
+python3 tests/rom_story.py --core /path/to/snes9x_libretro.so --pal
 python3 tests/rom_smoke.py --core /path/to/snes9x_libretro.so --ending secret
 python3 tests/rom_smoke.py --core /path/to/snes9x_libretro.so --scope --pal
 python3 tests/rom_profile.py --core /path/to/snes9x_libretro.so

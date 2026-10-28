@@ -4,7 +4,7 @@ import json
 import textwrap
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
-ORDER='PROLOG HEAD EGOR KIND LOCK BIRCH MIRO CONFESS DENY FOREST PRIEST TIKHON TOKEN CHAPEL REVEAL FREE BIND RITUAL FINAL GOOD BAD SECRET MODERN GATE GRAVE WITNESS MARK NO_LIGHT RETRY ECHO_HOME ECHO_BOAT ECHO_STONE BELL_HINT BELL_DONE EGOR_RETURN EGOR_CAGED REMEMBER'.split()
+ORDER='PROLOG HEAD EGOR KIND LOCK BIRCH MIRO CONFESS DENY FOREST PRIEST TIKHON TOKEN CHAPEL REVEAL FREE BIND RITUAL FINAL GOOD BAD SECRET MODERN GATE GRAVE WITNESS MARK NO_LIGHT RETRY ECHO_HOME ECHO_BOAT ECHO_STONE BELL_HINT BELL_DONE EGOR_RETURN EGOR_CAGED REMEMBER MIRO_RETRY MIRO_RELEASE RITUAL_READY FINAL_WARNING REPAIR END_STAY END_LOST'.split()
 def literal(s):
     return '"'+''.join('\\%03o'%b if b>=128 else '\\n' if b==10 else '\\"' if b==34 else '\\\\' if b==92 else chr(b) for b in s.encode('cp1251'))+'"'
 def wrap(s):
@@ -55,7 +55,7 @@ def main():
     (ROOT/'Data/include/ui_text.h').write_text('\n'.join(header)+'\n')
     page_count=sum(len(data['dialogues'][x]) for x in expected)
     script=['# Сокращённый сценарий SNES-сборки','',
-            '%d групп сцен, %d экрана. Исходник — assets/story.json.'%(len(expected),page_count),'',
+            'Групп сцен: %d; экранов: %d. Исходник — assets/story.json.'%(len(expected),page_count),'',
             'Кирилл после победы над Тенью спускается в подвал НовГУ',
             'и оказывается в Черноречье, в теле Всеволода.','']
     for key in expected:

@@ -373,6 +373,8 @@ static void draw_corridor(const Game *g) {
 }
 static void draw_cinematic(const Game *g) {
     hide();
+    if (g->dialogue != D_PROLOG)
+        return;
     if (g->page == 0) {
         sprite(0, CORRIDOR_START - 8, 78, 192);
         sprite(10, CORRIDOR_START - 8, 94, 224);
@@ -458,11 +460,12 @@ void video_draw(const Game *g, SkU8 scope) {
     }
     time_banner = 255;
     projected = (g->mode >= G_DIALOGUE && g->mode <= G_PAUSE) || g->mode == G_BELL;
-    if (g->mode == G_DIALOGUE && g->dialogue == D_PROLOG)
+    if (g->mode == G_DIALOGUE && (g->dialogue == D_PROLOG || g->dialogue == D_MODERN))
         projected = 0;
     if (g->mode == G_PAUSE && g->return_mode == G_CORRIDOR)
         projected = 0;
-    if (g->mode == G_PAUSE && g->return_mode == G_DIALOGUE && g->dialogue == D_PROLOG)
+    if (g->mode == G_PAUSE && g->return_mode == G_DIALOGUE &&
+        (g->dialogue == D_PROLOG || g->dialogue == D_MODERN))
         projected = 0;
     near = SK_NONE;
     keys[0] = g->mode | ((SkU16)g->option << 8);
@@ -492,9 +495,11 @@ void video_draw(const Game *g, SkU8 scope) {
         bg = 1;
     corridor = g->mode == G_CORRIDOR ||
                (g->mode == G_PAUSE && g->return_mode == G_CORRIDOR);
-    cinematic = g->mode == G_DIALOGUE && g->dialogue == D_PROLOG;
+    cinematic = g->mode == G_DIALOGUE && (g->dialogue == D_PROLOG || g->dialogue == D_MODERN);
     if (cinematic)
-        bg = g->page < 3 ? 6 + g->page : 9;
+        bg = g->dialogue == D_MODERN ? 7 : (g->page < 3 ? 6 + g->page : 9);
+    if (g->mode == G_PAUSE && g->return_mode == G_DIALOGUE && g->dialogue == D_MODERN)
+        bg = 7;
     if (corridor)
         bg = 6;
     world = bg >= 2 && bg <= 5;
@@ -572,8 +577,8 @@ void video_draw(const Game *g, SkU8 scope) {
         text(1, 27, TXT_FINISH);
     } else if (g->mode == G_DIALOGUE) {
         if (cinematic) {
-            text(1, 1, g->page == 0 ? TXT_PROLOG_GYM
-                                   : (g->page == 1 ? TXT_PROLOG_CELLAR : TXT_PROLOG_PAST));
+            text(1, 1, g->dialogue == D_MODERN ? TXT_PROLOG_CELLAR : (g->page == 0 ? TXT_PROLOG_GYM
+                                   : (g->page == 1 ? TXT_PROLOG_CELLAR : TXT_PROLOG_PAST)));
         } else
             text(1, 1, room_name(g->room));
         panel(16, 12);
@@ -595,7 +600,7 @@ void video_draw(const Game *g, SkU8 scope) {
         text(2, 16, choice_text(g->choice, 0));
         text(2, 19, choice_text(g->choice, 1));
         text(0, 16 + g->option * 3, ">");
-        text(1, 25, TXT_CONTINUE);
+        text(1, 25, TXT_CHOOSE_HINT);
     } else if (g->mode == G_BELL) {
         panel(8, 20);
         text(1, 9, TXT_BELL_TITLE);
@@ -656,6 +661,10 @@ void video_draw(const Game *g, SkU8 scope) {
                (g->memories & 1 ? 1 : 0) + (g->memories & 2 ? 1 : 0) + (g->memories & 4 ? 1 : 0));
         text(16, 18, TXT_WARDS);
         number(25, 18, g->wards);
+        text(1, 19, TXT_EVIDENCE);
+        number(16, 19, (g->evidence & 1 ? 1 : 0) + (g->evidence & 2 ? 1 : 0) +
+                       (g->evidence & 4 ? 1 : 0));
+        text(18, 19, "/3");
         if (g->room == 3) {
             text(1, 20, TXT_NODES);
             number(8, 20, g->charge[0]);

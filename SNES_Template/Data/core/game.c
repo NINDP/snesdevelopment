@@ -67,7 +67,13 @@ static SkU8 votes(const Game *g) {
     return (HAS(g, F_KIND) ? 1 : 0) + (HAS(g, F_CONFESS) ? 1 : 0) + (HAS(g, F_FREE) ? 1 : 0);
 }
 static void choose_ending(Game *g, SkU8 give_village) {
-    if (give_village || votes(g) != 3)
+    /* An early mistake can be repaired; only an explicit bargain sacrifices
+       the village. A failed attempt to seal returns to exploration. */
+    if (!give_village && votes(g) != 3) {
+        begin_dialogue(g, D_REPAIR);
+        return;
+    }
+    if (give_village)
         g->ending = END_BAD;
     else
         g->ending = g->evidence == 7 ? END_SECRET : END_GOOD;
@@ -83,12 +89,14 @@ static void finish_dialogue(Game *g) {
         g->flags |= F_HEAD;
         break;
     case D_EGOR:
+    case D_EGOR_CAGED:
         begin_choice(g, C_EGOR);
         break;
     case D_BIRCH:
         g->flags |= F_BIRCH;
         break;
     case D_MIRO:
+    case D_MIRO_RETRY:
         begin_choice(g, C_CONFESS);
         break;
     case D_FOREST:
@@ -112,10 +120,15 @@ static void finish_dialogue(Game *g) {
         g->flags |= F_REVEAL | F_HEART_TRUTH;
         begin_choice(g, C_MIRO);
         break;
+    case D_MIRO_RELEASE:
+        begin_choice(g, C_MIRO);
+        break;
     case D_RITUAL:
+    case D_RITUAL_READY:
         g->flags |= F_WITNESS;
         break;
     case D_FINAL:
+    case D_FINAL_WARNING:
         begin_choice(g, C_FINAL);
         break;
     case D_GRAVE:
@@ -148,11 +161,17 @@ static void finish_dialogue(Game *g) {
         begin_choice(g, C_FINAL);
         break;
     case D_GOOD:
+        begin_dialogue(g, D_END_STAY);
+        break;
     case D_BAD:
+        begin_dialogue(g, D_END_LOST);
+        break;
     case D_SECRET:
         begin_dialogue(g, D_MODERN);
         break;
     case D_MODERN:
+    case D_END_STAY:
+    case D_END_LOST:
         g->mode = G_END;
         break;
     default:
@@ -163,17 +182,20 @@ static void choose(Game *g) {
     switch (g->choice) {
     case C_EGOR:
         g->flags |= F_EGOR;
+        g->flags &= ~F_KIND;
         if (!g->option)
             g->flags |= F_KIND;
         begin_dialogue(g, g->option ? D_LOCK : D_KIND);
         break;
     case C_CONFESS:
         g->flags |= F_MIRO;
+        g->flags &= ~F_CONFESS;
         if (!g->option)
             g->flags |= F_CONFESS;
         begin_dialogue(g, g->option ? D_DENY : D_CONFESS);
         break;
     case C_MIRO:
+        g->flags &= ~F_FREE;
         if (!g->option)
             g->flags |= F_FREE;
         begin_dialogue(g, g->option ? D_BIND : D_FREE);
@@ -329,7 +351,8 @@ static void interact(Game *g, SkU8 id) {
         if (id == 0)
             begin_dialogue(g, D_BIRCH);
         if (id == 1)
-            begin_dialogue(g, !HAS(g, F_MIRO) ? D_MIRO : (HAS(g, F_CONFESS) ? D_CONFESS : D_DENY));
+            begin_dialogue(g, !HAS(g, F_MIRO) ? D_MIRO :
+                (HAS(g, F_CONFESS) ? D_CONFESS : D_MIRO_RETRY));
         if (id >= 2 && id <= 4) {
             if (!HAS(g, F_BIRCH)) {
                 g->notice = 3;
@@ -402,8 +425,9 @@ static void interact(Game *g, SkU8 id) {
                 g->notice = 19;
         }
     } else {
-        if (id == 0 && !HAS(g, F_REVEAL))
-            begin_dialogue(g, D_REVEAL);
+        if (id == 0)
+            begin_dialogue(g, !HAS(g, F_REVEAL) ? D_REVEAL :
+                (HAS(g, F_FREE) ? D_FREE : D_MIRO_RELEASE));
         if (id == 1)
             g->notice = 5;
         if (id >= 2 && id <= 4) {
@@ -413,11 +437,12 @@ static void interact(Game *g, SkU8 id) {
             } else
                 g->notice = 5;
             if (g->rune_mask == 7 && !HAS(g, F_WITNESS))
-                begin_dialogue(g, D_RITUAL);
+                begin_dialogue(g, g->evidence == 7 && votes(g) == 3 ? D_RITUAL_READY : D_RITUAL);
         }
         if (id == 5) {
             if (HAS(g, F_WITNESS))
-                begin_dialogue(g, g->memories == 15 ? D_REMEMBER : D_FINAL);
+                begin_dialogue(g, votes(g) != 3 ? D_FINAL_WARNING :
+                    (g->evidence == 7 ? D_REMEMBER : D_FINAL));
             else
                 g->notice = 23;
         }
@@ -657,6 +682,10 @@ void game_tick(Game *g, const SkInput *in) {
         return;
     }
     if (g->mode == G_CHOICE) {
+        if (in->pressed & SK_BACK) {
+            g->mode = G_EXPLORE;
+            return;
+        }
         if (in->pressed & (SK_UP | SK_DOWN))
             g->option ^= 1;
         if (in->scope && in->aim_valid)
@@ -760,18 +789,35 @@ void game_tick(Game *g, const SkInput *in) {
     }
 }
 const char *game_goal(const Game *g) {
-    if (g->room == 0)
-        return TXT_G_HEAD;
-    if (g->room == 1)
-        return TXT_G_FOREST;
-    if (g->room == 2)
-        return TXT_G_CHAPEL;
+    if (HAS(g, F_WITNESS) && votes(g) != 3) {
+        if (!HAS(g, F_KIND)) return TXT_G_REPAIR_EGOR;
+        if (!HAS(g, F_CONFESS)) return TXT_G_REPAIR_MIRO;
+        return TXT_G_REPAIR_FREE;
+    }
+    if (g->room == 0) {
+        if (!HAS(g, F_HEAD)) return TXT_G_HEAD;
+        return HAS(g, F_EGOR) ? TXT_G_TO_FOREST : TXT_G_EGOR;
+    }
+    if (g->room == 1) {
+        if (!HAS(g, F_BIRCH)) return TXT_G_BIRCH;
+        if (!HAS(g, F_MIRO)) return TXT_G_MIRO;
+        return HAS(g, F_FOREST) ? TXT_G_TO_CHAPEL : TXT_G_FOREST;
+    }
+    if (g->room == 2) {
+        if (!HAS(g, F_PRIEST | F_TIKHON)) return TXT_G_CHAPEL;
+        if (!HAS(g, F_TOKEN)) return TXT_G_TOKEN;
+        return HAS(g, F_CHAPEL) ? TXT_G_TO_HEART : TXT_G_CUPS;
+    }
     if (!HAS(g, F_REVEAL))
         return TXT_G_REVEAL;
     return HAS(g, F_WITNESS) ? TXT_G_FINAL : TXT_G_SEAL;
 }
 const char *game_journal(const Game *g) {
-    if (HAS(g, F_WITNESS))
+    if (HAS(g, F_WITNESS)) {
+        if (votes(g) != 3) return TXT_J_REPAIR;
+        return g->evidence == 7 ? TXT_J_READY : TXT_J_FINAL;
+    }
+    if (HAS(g, F_REVEAL) && votes(g) == 3)
         return TXT_J_SEAL;
     if (HAS(g, F_REVEAL))
         return TXT_J_TRUTH;
@@ -781,5 +827,7 @@ const char *game_journal(const Game *g) {
         return TXT_J_FOREST;
     if (HAS(g, F_EGOR))
         return TXT_J_EGOR;
+    if (HAS(g, F_HEAD))
+        return TXT_J_HEAD;
     return TXT_J_EMPTY;
 }

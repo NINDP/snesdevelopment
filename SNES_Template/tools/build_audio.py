@@ -40,7 +40,10 @@ def main():
         with wave.open(str(OUT/(name+'.wav')),'wb') as f:
             f.setnchannels(1); f.setsampwidth(2); f.setframerate(rate if name in ('latch','seal') else 2000)
             f.writeframes(struct.pack('<%dh'%len(samples),*samples))
-        asm+=['.section "sfx_%s" superfree'%name,name+'_sound:','.incbin "assets/generated/%s.brr"'%name,name+'_sound_end:','.ends']
+        # C takes a 16-bit end address. Reserve a byte after the label so it
+        # cannot land at $10000 when narrative growth repacks the ROM banks.
+        asm+=['.section "sfx_%s" superfree'%name,name+'_sound:',
+              '.incbin "assets/generated/%s.brr"'%name,name+'_sound_end:', '.db 0', '.ends']
     (ROOT/'Data/content/audio.asm').write_text('\n'.join(asm)+'\n')
     print('Generated nine original ambient and combat WAV/BRR effects')
 if __name__=='__main__': main()

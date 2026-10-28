@@ -72,6 +72,13 @@ enum DialogueId {
     D_EGOR_RETURN,
     D_EGOR_CAGED,
     D_REMEMBER,
+    D_MIRO_RETRY,
+    D_MIRO_RELEASE,
+    D_RITUAL_READY,
+    D_FINAL_WARNING,
+    D_REPAIR,
+    D_END_STAY,
+    D_END_LOST,
     D_COUNT
 };
 enum ChoiceId { C_EGOR, C_CONFESS, C_MIRO, C_FINAL };

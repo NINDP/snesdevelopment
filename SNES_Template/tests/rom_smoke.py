@@ -39,9 +39,9 @@ class Runner:
         mode=state['mode']
         if mode==3:cut=world_cut(state)
         elif mode in (2,4,5,6,7,11):
-            if mode==2 and state['dialogue']==0:return
+            if mode==2 and state['dialogue'] in (0,22):return
             if mode==7 and (state['return_mode']==12 or
-                    (state['return_mode']==2 and state['dialogue']==0)):return
+                    (state['return_mode']==2 and state['dialogue'] in (0,22))):return
             cut={2:128,4:88,5:64,6:16,7:48,11:64}[mode]
         else:return
         pixels=np.asarray(self.e.frame)
@@ -356,7 +356,7 @@ def run(core,ending,pal=False,scope=False):
         assert e.state()['tick']==tick;r.capture('pause');e.tap(3);e.wait_mode(3)
     for index in range(3):r.rune(index)
     assert e.state()['rune_mask']==7 and e.state()['flags']&8192
-    r.inspect(5);r.choose(0);assert e.state()['mode']==8,e.state()
+    r.inspect(5);r.choose(1 if ending=='bad' else 0);assert e.state()['mode']==8,e.state()
     assert e.state()['ending']=={'good':0,'bad':1,'secret':2}[ending],e.state()
     r.capture('ending-'+ending)
     assert e.audio_peak>0,'Silent SPC output'

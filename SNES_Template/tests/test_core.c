@@ -3,7 +3,9 @@
 #include <string.h>
 #include "game.h"
 #include "perspective.h"
+#include "ui_text.h"
 static SkInput none;
+static SkU8 last_epilogue = 255;
 static void press(Game *g, SkU16 button) {
     SkInput in = none;
     in.pressed = button;
@@ -12,8 +14,12 @@ static void press(Game *g, SkU16 button) {
 }
 static void finish(Game *g) {
     unsigned n = 0;
-    while ((g->mode == G_DIALOGUE || g->mode == G_CORRIDOR) && n++ < 400)
+    while ((g->mode == G_DIALOGUE || g->mode == G_CORRIDOR) && n++ < 400) {
+        if (g->mode == G_DIALOGUE &&
+            (g->dialogue == D_MODERN || g->dialogue == D_END_STAY || g->dialogue == D_END_LOST))
+            last_epilogue = g->dialogue;
         press(g, g->mode == G_CORRIDOR ? SK_RIGHT : SK_ACTION);
+    }
     assert(n < 400);
 }
 static void inspect(Game *g, SkU8 hotspot) {
@@ -64,7 +70,7 @@ static void arrive_chapel(Game *g, SkU8 moral) {
     finish(g);
     assert(g->flags & F_CHAPEL);
 }
-static void end_run(Game *g, SkU8 moral, SkU8 evidence, SkU8 final_option) {
+static void reach_final(Game *g, SkU8 moral, SkU8 evidence) {
     unsigned i, n;
     arrive_chapel(g, moral);
     g->evidence = evidence;
@@ -84,8 +90,15 @@ static void end_run(Game *g, SkU8 moral, SkU8 evidence, SkU8 final_option) {
     }
     assert(g->flags & F_WITNESS);
     inspect(g, 5);
+    assert(g->mode == G_CHOICE && g->choice == C_FINAL);
+}
+static void end_run(Game *g, SkU8 moral, SkU8 evidence, SkU8 final_option) {
+    reach_final(g, moral, evidence);
+    last_epilogue = 255;
     choice(g, final_option);
     assert(g->mode == G_END && (g->flags & F_SEALED));
+    assert(last_epilogue == (g->ending == END_SECRET ? D_MODERN :
+        (g->ending == END_GOOD ? D_END_STAY : D_END_LOST)));
 }
 static void test_light(void) {
     Game g;
@@ -175,7 +188,7 @@ static void test_endings(void) {
     assert(g.ending == END_GOOD);
     end_run(&g, 1, 7, 0);
     assert(g.ending == END_SECRET);
-    end_run(&g, 0, 7, 0);
+    end_run(&g, 0, 7, 1);
     assert(g.ending == END_BAD);
     end_run(&g, 1, 7, 1);
     assert(g.ending == END_BAD);
@@ -183,6 +196,43 @@ static void test_endings(void) {
     assert(g.mode == G_MENU);
     press(&g, SK_ACTION);
     assert(g.flags == 0 && g.evidence == 0 && g.mode == G_DIALOGUE);
+}
+static void test_reconciliation_and_memory(void) {
+    Game g;
+    SkU16 before;
+    reach_final(&g, 0, 7);
+    assert(g.dialogue == D_FINAL_WARNING && !(g.flags & F_SEALED));
+    before = g.flags;
+    press(&g, SK_BACK);
+    assert(g.mode == G_EXPLORE && g.flags == before);
+    inspect(&g, 5);
+    choice(&g, 0);
+    assert(g.mode == G_EXPLORE && g.dialogue == D_REPAIR && !(g.flags & F_SEALED));
+    assert(strcmp(game_goal(&g), TXT_G_REPAIR_EGOR) == 0);
+    /* Repair all three decisions through their real return paths. */
+    inspect(&g, 7); inspect(&g, 8); inspect(&g, 9);
+    assert(g.room == 0);
+    inspect(&g, 1); choice(&g, 0);
+    assert(g.flags & F_KIND);
+    assert(strcmp(game_goal(&g), TXT_G_REPAIR_MIRO) == 0);
+    inspect(&g, 3); inspect(&g, 1); choice(&g, 0);
+    assert(g.flags & F_CONFESS);
+    assert(strcmp(game_goal(&g), TXT_G_REPAIR_FREE) == 0);
+    inspect(&g, 5); inspect(&g, 4); inspect(&g, 0); choice(&g, 0);
+    assert(g.flags & F_FREE);
+    assert(!g.memories); /* Written evidence alone restores the full memory. */
+    inspect(&g, 5);
+    assert(g.dialogue == D_REMEMBER);
+    choice(&g, 0);
+    assert(g.mode == G_END && g.ending == END_SECRET);
+    /* Echoes and bells cannot claim the truth without written witnesses. */
+    reach_final(&g, 1, 0);
+    press(&g, SK_BACK);
+    g.memories = 15;
+    inspect(&g, 5);
+    assert(g.dialogue == D_FINAL);
+    choice(&g, 0);
+    assert(g.mode == G_END && g.ending == END_GOOD);
 }
 static void test_scope_destination(void) {
     Game g;
@@ -558,6 +608,7 @@ static void test_interaction_feedback(void) {
 }
 
 int main(void) {
+    test_reconciliation_and_memory();
     test_interaction_feedback();
     test_daycycle();
     test_perspective();
