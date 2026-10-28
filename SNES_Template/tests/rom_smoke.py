@@ -24,9 +24,7 @@ def daylight(state):
     assert state['sun_level']==sun,('Stale daylight',state)
     return sun if state['room']<2 else 0
 def world_cut(state):
-    if state['notice_ticks'] and state['notice']:return 192
-    if state['time_notice'] or state['bow_mode']:return 200
-    return 192 if state['focus']!=255 else 224
+    return 176  # Persistent clock/status dashboard occupies the bottom 48 px.
 class Runner:
     def __init__(self,e,scope):
         self.e=e;self.scope=scope;self.shots=[];self.prefix=''

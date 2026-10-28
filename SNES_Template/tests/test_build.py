@@ -1,12 +1,27 @@
 """A broken or ambiguous link must never publish over a tested ROM."""
 import importlib.util
+import json
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location('link_rom', Path(__file__).resolve().parents[1] / 'tools/link_rom.py')
 link_rom = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(link_rom)
+
+class JournalLayoutTests(unittest.TestCase):
+    def test_story_text_fits_journal_boxes(self):
+        source = Path(__file__).resolve().parents[1]/'assets/story.json'
+        for key, value in json.loads(source.read_text())['ui'].items():
+            if not key.startswith(('J_', 'G_')):
+                continue
+            lines = [line for paragraph in value.split('\n')
+                     for line in textwrap.wrap(paragraph, 30, break_long_words=False,
+                                               break_on_hyphens=False) or ['']]
+            with self.subTest(key=key):
+                self.assertLessEqual(len(lines), 4 if key.startswith('J_') else 2)
+                self.assertTrue(all(len(line) <= 30 for line in lines))
 
 class LinkFailureTests(unittest.TestCase):
     def setUp(self):
