@@ -15,6 +15,6 @@ extern const SkU8 hero_grips[HERO_FRAME_COUNT * 4];
 void hero_enter(void);
 void hero_leave(void);
 void hero_prepare(const Game *g, SkU8 moving);
-void hero_commit(void);
+SkU8 hero_commit(void);
 void hero_draw(SkU16 first_slot);
 #endif

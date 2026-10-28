@@ -106,7 +106,7 @@ def report():
             if inner_l<=inner_r and not outer_l<=inner_l<=inner_r<=outer_r:
                 raise ValueError('Inner glow escapes the visibility window')
         light_bytes+=len(payload)
-        for cut in (224,128,88,64,16,48,200,192):
+        for cut in (224,128,88,64,16,48,176,192):
             payload=(assets/('perspective-glow%d-%d.hdma'%(phase,cut))).read_bytes()
             rows=hdma_rows(payload,1)
             if len(rows)!=224 or any(row[0]>15 for row in rows):
@@ -156,6 +156,12 @@ def report():
         raise ValueError('Unexpected bow atlas/HUD size')
     if (assets/'bow-status.map').stat().st_size!=512:
         raise ValueError('Unexpected bow charge/status panels')
+    for name, filename, size in (('exploration_hud','exploration-hud.map',384),
+                                 ('hud_clocks','hud-clocks.map',7680),
+                                 ('hud_numbers','hud-numbers.map',726)):
+        match=re.search(r'^([0-9a-fA-F]{8}) '+name+'$',symbols,re.M)
+        if (assets/filename).stat().st_size!=size or not match or (int(match[1],16)&0x7fff)>32768-size:
+            raise ValueError('HUD table must fit one LoROM bank: '+name)
     scenery_bytes=0
     backdrop_bytes=0
     for room in range(2):

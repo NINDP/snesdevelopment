@@ -92,12 +92,13 @@ void hero_prepare(const Game *g, SkU8 moving) {
     if (frame != selected_frame)
         pending_frame = frame;
 }
-void hero_commit(void) {
+SkU8 hero_commit(void) {
     if (pending_frame == 255)
-        return;
+        return 0;
     /* Each facing is a separate 8 KiB LoROM section: this 1 KiB transfer
        cannot wrap its 16-bit source address. No per-frame heap or WRAM copy. */
     dmaCopyVram(frame_data[pending_frame], VIDEO_OBJ_TILES, HERO_FRAME_BYTES);
     selected_frame = pending_frame;
     pending_frame = 255;
+    return 1;
 }

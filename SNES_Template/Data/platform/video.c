@@ -6,6 +6,25 @@
 extern u8 bg0_tiles, bg0_tiles_end, bg0_map;
 extern u8 bg1_tiles, bg1_tiles_end, bg1_map, bg1_palette;
 extern u8 menu_torch_tiles;
+#define SPLASH_FRAME(n) extern u8 splash_frame##n;
+SPLASH_FRAME(0) SPLASH_FRAME(1) SPLASH_FRAME(2) SPLASH_FRAME(3)
+SPLASH_FRAME(4) SPLASH_FRAME(5) SPLASH_FRAME(6) SPLASH_FRAME(7)
+SPLASH_FRAME(8) SPLASH_FRAME(9) SPLASH_FRAME(10) SPLASH_FRAME(11)
+SPLASH_FRAME(12) SPLASH_FRAME(13) SPLASH_FRAME(14) SPLASH_FRAME(15)
+SPLASH_FRAME(16) SPLASH_FRAME(17) SPLASH_FRAME(18) SPLASH_FRAME(19)
+SPLASH_FRAME(20) SPLASH_FRAME(21) SPLASH_FRAME(22) SPLASH_FRAME(23)
+SPLASH_FRAME(24) SPLASH_FRAME(25) SPLASH_FRAME(26) SPLASH_FRAME(27)
+SPLASH_FRAME(28) SPLASH_FRAME(29) SPLASH_FRAME(30) SPLASH_FRAME(31)
+static u8 *const splash_frames[32] = {
+    &splash_frame0, &splash_frame1, &splash_frame2, &splash_frame3,
+    &splash_frame4, &splash_frame5, &splash_frame6, &splash_frame7,
+    &splash_frame8, &splash_frame9, &splash_frame10, &splash_frame11,
+    &splash_frame12, &splash_frame13, &splash_frame14, &splash_frame15,
+    &splash_frame16, &splash_frame17, &splash_frame18, &splash_frame19,
+    &splash_frame20, &splash_frame21, &splash_frame22, &splash_frame23,
+    &splash_frame24, &splash_frame25, &splash_frame26, &splash_frame27,
+    &splash_frame28, &splash_frame29, &splash_frame30, &splash_frame31
+};
 extern u8 bg2_tiles, bg2_tiles_end, bg2_map;
 extern u8 bg3_tiles, bg3_tiles_end, bg3_map;
 extern u8 bg4_tiles, bg4_tiles_end, bg4_map;
@@ -17,6 +36,8 @@ extern u8 cine1_tiles, cine1_tiles_end, cine1_map, cine1_palette;
 extern u8 cine2_tiles, cine2_tiles_end, cine2_map, cine2_palette;
 extern u8 sprite_tiles, sprite_tiles_end, sprite_palette, bg_palette, font_tiles, font_tiles_end;
 extern u8 daycycle_notices;
+extern u8 exploration_hud;
+extern u8 hud_clocks, hud_numbers;
 extern u8 bow_hud_maps, bow_status_maps, bow_wait_tiles;
 static SkU8 bow_status_cache = 255;
 extern u8 interaction0_maps, interaction1_maps, interaction2_maps, interaction3_maps;
@@ -36,6 +57,7 @@ static const SkU8 bucket10[61] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1
 static SkU16 text_map[VIDEO_TEXT_ENTRIES];
 static SkU8 current_bg = 255, dirty = 1, redraw = 1;
 static SkU8 menu_torch_frame = 0, menu_torch_uploaded = 0;
+static SkU8 splash_frame = 0, splash_uploaded = 0;
 static SkU16 menu_torch_vram = 0;
 static SkU16 last_keys[10] = {65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535};
 static SkS16 previous_x = 0, previous_y = 0, previous_enemy_x = 0, previous_enemy_y = 0;
@@ -116,6 +138,54 @@ static void number(SkU8 x, SkU8 y, SkU16 value) {
     }
     text(x, y, out);
 }
+static void draw_clock(SkU8 x, SkU8 y, const Game *g) {
+    SkU8 hour = g->day_seconds >> 5;
+    SkU8 minute = ((g->day_seconds & 31) * 60) >> 5;
+    char value[6];
+    if (!redraw)
+        return;
+    value[0] = '0' + hour / 10;
+    value[1] = '0' + hour % 10;
+    value[2] = ':';
+    value[3] = '0' + minute / 10;
+    value[4] = '0' + minute % 10;
+    value[5] = 0;
+    text(x, y, value);
+}
+static void rule(SkU8 row) {
+    SkU8 x;
+    if (redraw)
+        for (x = 2; x < 30; ++x)
+            ui_tile(x, row, 261);
+}
+static void text_box(SkU8 x, SkU8 y, const char *value, SkU8 width, SkU8 rows) {
+    SkU8 column = 0, row = 0, length, i;
+    if (!redraw || !value)
+        return;
+    while (*value && row < rows) {
+        if (*value == '\n') {
+            ++value; ++row; column = 0;
+            continue;
+        }
+        length = 0;
+        while (value[length] && value[length] != ' ' && value[length] != '\n')
+            ++length;
+        if (length && column && column + length > width) {
+            ++row; column = 0;
+            if (row == rows) break;
+        }
+        if (!length) {
+            ++value;
+            if (column && column < width) ++column;
+            continue;
+        }
+        for (i = 0; i < length; ++i) {
+            if (column >= width) { ++row; column = 0; }
+            if (row == rows) return;
+            ui_tile(x + column++, y + row, (SkU8)*value++);
+        }
+    }
+}
 static void background(SkU8 id) {
     u8 *tiles = 0, *end = 0, *map = 0, *dim = 0, *palette = &bg_palette;
     SkU16 palette_bytes = 32, map_bytes = 2048;
@@ -129,6 +199,10 @@ static void background(SkU8 id) {
         tiles = &bg0_tiles;
         end = &bg0_tiles_end;
         map = &bg0_map;
+        /* Studio card and menu use the same night/bronze palette. */
+        palette = &bg1_palette;
+        palette_bytes = 256;
+        splash_frame = splash_uploaded = 0;
         break;
     case 1:
         tiles = &bg1_tiles;
@@ -223,7 +297,11 @@ static void background(SkU8 id) {
     setPaletteColor(142, RGB5(31, 13, 2));
     current_bg = id;
     scene_age = 0;
-    setScreenOn();
+    /* Keep the first card dark while the initial draw prepares its reveal. */
+    if (id == 0)
+        REG_INIDISP = 0;
+    else
+        setScreenOn();
 }
 static void sprite(SkU8 id, SkS16 x, SkS16 y, SkU16 tile) {
     oamSet((SkU16)id * 4, x, y, 2, 0, 0, tile, 0);
@@ -259,6 +337,11 @@ void video_init(void) {
     setPaletteColor(31, RGB5(29, 24, 15));
 }
 void video_commit(void) {
+    SkU8 full_ui = dirty && !banner_dirty;
+    if (current_bg == 0 && splash_frame != splash_uploaded) {
+        dmaCopyVram(splash_frames[splash_frame], VIDEO_BG_MAP, 2048);
+        splash_uploaded = splash_frame;
+    }
     if (current_bg == 1 && menu_torch_frame != menu_torch_uploaded) {
         dmaCopyVram(&menu_torch_tiles + (SkU16)menu_torch_frame * VIDEO_MENU_TORCH_BYTES,
                     menu_torch_vram, VIDEO_MENU_TORCH_BYTES);
@@ -266,14 +349,14 @@ void video_commit(void) {
     }
     if (dirty) {
         if (banner_dirty)
-            dmaCopyVram((u8 *)text_map + 24 * 64, VIDEO_TEXT_MAP + 24 * 32, 4 * 64);
+            dmaCopyVram((u8 *)text_map + 23 * 64, VIDEO_TEXT_MAP + 23 * 32, 4 * 64);
         else
             dmaCopyVram((u8 *)text_map, VIDEO_TEXT_MAP, sizeof(text_map));
         dirty = 0;
         banner_dirty = 0;
     }
     if (current_bg >= 10 && current_bg <= 13) {
-        perspective_commit();
+        perspective_commit(full_ui);
         return;
     }
     flashlight_commit();
@@ -405,7 +488,7 @@ static void draw_torch(const Game *g) {
     }
 }
 void video_draw(const Game *g, SkU8 scope) {
-    SkU8 i, bg, near, changed, world, cinematic, corridor, projected, cut, bow_status;
+    SkU8 i, bg, near, changed, world, cinematic, corridor, projected, cut, bow_status, status_changed;
     SkU16 keys[10];
     const StoryLine *line;
     calibration_stage = 255;
@@ -431,31 +514,42 @@ void video_draw(const Game *g, SkU8 scope) {
             (g->bow_draw >= BOW_MIN_DRAW ? 1 : 0))))));
             if (g->shove_cooldown) bow_status |= 128;
         }
-        if (i != time_banner || (g->bow_mode && i >= 32 && i < 82 && bow_status != bow_status_cache)) {
+        status_changed = time_banner == 255 || last_keys[0] != (g->oil | ((SkU16)g->fear << 8)) ||
+                         last_keys[1] != g->day_seconds;
+        if (i != time_banner || status_changed ||
+            (g->bow_mode && i >= 32 && i < 82 && bow_status != bow_status_cache)) {
             banner_dirty = !dirty && time_banner != 255;
-            /* Only entry from a full-screen menu needs a full clear. Live
-               phase changes copy three prebuilt rows to fit the frame. */
-            if (time_banner == 255)
+            if (time_banner == 255) {
                 memset(text_map, 0, sizeof(text_map));
-            else
-                memset(text_map + 24 * 32, 0, 4 * 64);
+                memcpy(text_map + 22 * 32, &exploration_hud, 6 * 64);
+            } else
+                memcpy(text_map + 25 * 32, &exploration_hud + 3 * 64, 2 * 64);
             time_banner = i;
             dirty = 1;
+            redraw = 1;
+            if (status_changed) {
+                memcpy(text_map + 23 * 32, &exploration_hud + 64, 64);
+                last_keys[0] = g->oil | ((SkU16)g->fear << 8);
+                last_keys[1] = g->day_seconds;
+                memcpy(text_map + 23 * 32 + 8, &hud_numbers + (SkU16)g->oil * 6, 6);
+                memcpy(text_map + 23 * 32 + 19, &hud_numbers + (SkU16)g->fear * 6, 6);
+                memcpy(text_map + 23 * 32 + 25, &hud_clocks + g->day_seconds * 10, 10);
+            }
             if (i >= 160 && i < 192)
-                memcpy(text_map + 24 * 32, &interaction_notice_maps + ((SkU16)g->notice << 8), 4 * 64);
+                memcpy(text_map + 25 * 32, &interaction_notice_maps + ((SkU16)g->notice << 8) + 64, 2 * 64);
             else if (i >= 96 && i < 160)
-                memcpy(text_map + 24 * 32, context_maps + ((SkU16)g->focus << 8), 4 * 64);
+                memcpy(text_map + 25 * 32, context_maps + ((SkU16)g->focus << 8) + 64, 2 * 64);
             else if (g->time_notice)
-                memcpy(text_map + 25 * 32, &daycycle_notices + (SkU16)g->time_phase * 192, 3 * 64);
+                memcpy(text_map + 25 * 32, &daycycle_notices + (SkU16)g->time_phase * 192 + 64, 64);
             else if (g->bow_mode) {
-                memcpy(text_map + 25 * 32, &bow_hud_maps + (SkU16)(i - 32) * 192, 3 * 64);
                 memcpy(text_map + 25 * 32, &bow_status_maps + ((SkU16)(bow_status & 7) << 6), 64);
+                memcpy(text_map + 26 * 32, &bow_hud_maps + (SkU16)(i - 32) * 192 + 64, 64);
                 if (g->ammo && g->shove_cooldown)
                     memcpy(text_map + 26 * 32 + (scope ? 24 : 22), &bow_wait_tiles, 12);
             }
             bow_status_cache = bow_status;
         }
-        perspective_overlay(i >= 96 && i < 192 ? 192 : (i != 254 ? 200 : 224));
+        perspective_overlay(176);
         return;
     }
     time_banner = 255;
@@ -557,9 +651,8 @@ void video_draw(const Game *g, SkU8 scope) {
         draw_actors(g);
     }
     if (g->mode == G_SPLASH) {
-        text(11, 16, "NABLA TEAM");
-        text(11, 19, "PRESENTS");
-        bgSetScroll(0, 0, g->tick < 30 ? (30 - g->tick) / 2 - 1 : -1);
+        /* Captions are centered in the animation itself, after the sparks. */
+        splash_frame = g->tick < 96 ? g->tick / 3 : 28 + ((g->tick >> 2) & 3);
     } else if (g->mode == G_MENU) {
         /* Night of Chernorechye: menu positions align with the painted slab. */
         menu_torch_frame = (g->tick >> 2) & 15;
@@ -625,67 +718,52 @@ void video_draw(const Game *g, SkU8 scope) {
             text(1, 25, TXT_PUZZLE_WRONG);
     } else if (g->mode == G_JOURNAL) {
         panel(2, 26);
-        text(1, 10, TXT_WORLD_DAY);
-        number(7, 10, g->day_number);
-        if (redraw) {
-            SkU8 hour = g->day_seconds >> 5;
-            SkU8 minute = ((g->day_seconds & 31) * 60) >> 5;
-            char clock_text[6];
-            clock_text[0] = '0' + hour / 10;
-            clock_text[1] = '0' + hour % 10;
-            clock_text[2] = ':';
-            clock_text[3] = '0' + minute / 10;
-            clock_text[4] = '0' + minute % 10;
-            clock_text[5] = 0;
-            text(12, 10, clock_text);
-        }
-        text(20, 10, game_time_name(g));
-        text(1, 3, TXT_JOURNAL);
-        text(1, 4, TXT_OIL);
-        number(8, 4, g->oil);
-        text(15, 4, TXT_FEAR);
-        number(23, 4, g->fear);
-        meter(1, 5, bucket5[g->oil]);
-        meter(18, 5, bucket5[g->fear]);
-        text(1, 6, TXT_GOAL);
-        text(1, 8, game_goal(g));
-        text(1, 12, game_journal(g));
-        text(1, 16, TXT_NIGHTS);
-        number(7, 16, g->nights);
-        text(12, 16, TXT_ARROWS);
-        number(19, 16, g->ammo);
-        text(23, 16, TXT_KILLS);
-        number(29, 16, g->kills);
-        text(1, 18, TXT_MEMORIES);
-        number(12, 18,
+        text(2, 3, TXT_JOURNAL);
+        draw_clock(25, 3, g);
+        text(2, 4, TXT_WORLD_DAY);
+        number(9, 4, g->day_number);
+        text(18, 4, game_time_name(g));
+        rule(5);
+        text(2, 6, TXT_OIL);
+        number(10, 6, g->oil);
+        text(18, 6, TXT_FEAR);
+        number(27, 6, g->fear);
+        meter(2, 7, bucket5[g->oil]);
+        meter(18, 7, bucket5[g->fear]);
+        text(2, 9, TXT_GOAL);
+        text_box(1, 10, game_goal(g), 30, 2);
+        text_box(1, 13, game_journal(g), 30, 4);
+        rule(17);
+        text(2, 18, TXT_ARROWS);
+        number(12, 18, g->ammo);
+        text(18, 18, TXT_WARDS);
+        number(28, 18, g->wards);
+        text(2, 20, TXT_MEMORIES);
+        number(12, 20,
                (g->memories & 1 ? 1 : 0) + (g->memories & 2 ? 1 : 0) + (g->memories & 4 ? 1 : 0));
-        text(16, 18, TXT_WARDS);
-        number(25, 18, g->wards);
-        text(1, 19, TXT_EVIDENCE);
+        text(2, 19, TXT_EVIDENCE);
         number(16, 19, (g->evidence & 1 ? 1 : 0) + (g->evidence & 2 ? 1 : 0) +
                        (g->evidence & 4 ? 1 : 0));
-        text(18, 19, "/3");
+        text(17, 19, "/3");
+        text(13, 20, "/3");
+        text(18, 20, g->room == 3 ? TXT_NODES : (g->room == 1 ? TXT_SIGNS : TXT_BELL_STATUS));
         if (g->room == 3) {
-            text(1, 20, TXT_NODES);
-            number(8, 20, g->charge[0]);
-            number(15, 20, g->charge[1]);
-            number(22, 20, g->charge[2]);
-        } else {
-            text(1, 20, TXT_BELL_STATUS);
-            number(12, 20, g->memories & 8 ? 3 : g->bell_step);
-        }
-        text(1, 22, g->notice ? notice_text(g->notice) : game_time_hint(g));
-        if (g->room == 1) {
-            text(17, 20, TXT_SIGNS);
-            number(24, 20, g->forest_step);
-            text(26, 20, "/3");
-        }
-        if (redraw) {
-            near = game_nearby(g);
-            if (near != SK_NONE)
-                text(1, 24, game_hotspot(g->room, near)->name);
-        }
-        text(1, 26, TXT_BACK);
+            number(22, 20, g->charge[0]);
+            text(24, 20, "/");
+            number(25, 20, g->charge[1]);
+            text(27, 20, "/");
+            number(28, 20, g->charge[2]);
+        } else if (g->room == 1) {
+            number(26, 20, g->forest_step);
+            text(27, 20, "/3");
+        } else
+            number(28, 20, g->memories & 8 ? 3 : g->bell_step);
+        text(2, 22, TXT_NIGHTS);
+        number(12, 22, g->nights);
+        text(18, 22, TXT_KILLS);
+        number(28, 22, g->kills);
+        text_box(2, 24, g->notice ? notice_text(g->notice) : game_time_hint(g), 28, 2);
+        text(2, 26, TXT_BACK);
     } else if (g->mode == G_PAUSE) {
         panel(6, 22);
         text(1, 7, TXT_PAUSE);

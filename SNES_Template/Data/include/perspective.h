@@ -16,7 +16,7 @@ SkU8 perspective_pick(const Game *g, SkS16 sx, SkS16 sy, SkS16 *x, SkS16 *y);
 SkU8 perspective_pick_target(const Game *g, SkS16 sx, SkS16 sy, SkS16 *x, SkS16 *y);
 void perspective_enter(const Game *g);
 void perspective_draw(const Game *g);
-void perspective_commit(void);
+void perspective_commit(SkU8 full_ui);
 void perspective_overlay(SkU8 cut);
 void perspective_leave(void);
 #endif

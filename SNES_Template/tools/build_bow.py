@@ -101,8 +101,8 @@ def build(out,assembly):
               'УДАР! НАТЯЖЕНИЕ СБИТО', 'ПОПОЛНИ СТРЕЛЫ У СОСУДА')
     status_maps=bytearray()
     for status in statuses:
-        row=[261|attributes]*32
-        row[0]=265|attributes;row[-1]=266|attributes
+        row=[256|attributes]*32
+        row[0]=263|attributes;row[-1]=264|attributes
         encoded=(' '+status+' ').encode('cp1251')
         assert len(encoded)<=28
         start=(32-len(encoded))//2

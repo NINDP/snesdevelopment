@@ -129,7 +129,7 @@ def map_dungeon():
     d.rectangle((77,89,91,103),outline=10); d.line((80,100,84,92,88,100),fill=11)
     d.rectangle((223,157,241,183),fill=1); lamp(d,24,170)
     return im
-def title(frame=0):
+def title(frame=0, branding=False):
     """Main menu: moonlit medieval Chernorechye, chapel and torch."""
     im, d = canvas()
     colors = [
@@ -235,6 +235,25 @@ def title(frame=0):
             if age < 3:
                 d.point((x, y+1), fill=9)
 
+    if branding:
+        # The studio card shares the menu's landscape, materials and palette.
+        # Keep its lettering on a quiet field, above the distant silhouettes.
+        d.rectangle((54, 34, 202, 175), fill=0)
+        d.rectangle((56, 36, 200, 173), outline=6)
+        d.rectangle((59, 39, 197, 170), outline=3)
+        for x, y, dx, dy in ((56, 36, 1, 1), (200, 36, -1, 1),
+                              (56, 173, 1, -1), (200, 173, -1, -1)):
+            d.line((x, y, x + dx*23, y), fill=8)
+            d.line((x, y, x, y + dy*17), fill=8)
+            d.point((x + dx*3, y + dy*3), fill=10)
+        # Rules flank the captions without touching the 8x8 text rows.
+        d.line((80, 144, 176, 144), fill=3)
+        d.rectangle((0, 198, 255, 223), fill=0)
+        d.line((12, 198, 244, 198), fill=6)
+        d.line((12, 199, 80, 199), fill=8)
+        d.rectangle((242, 197, 244, 200), fill=8)
+        return im
+
     # Menu slab: fixed dark field for clear Cyrillic overlay text.
     d.rectangle((14, 88, 174, 178), fill=0)
     d.rectangle((16, 90, 172, 176), outline=6)
@@ -257,15 +276,101 @@ def title(frame=0):
     d.rectangle((242, 197, 244, 200), fill=8)
     return im
 
-def splash():
-    im,d=canvas()
-    d.polygon([(98,58),(158,58),(128,113)],outline=11,width=3)
-    d.line((107,66,128,102,149,66),fill=8,width=2)
-    d.line((101,59,153,59),fill=15); d.line((86,177,170,177),fill=3)
-    for inset,color in ((0,2),(4,3)):
-        d.line((74+inset,48,74+inset,119,93,119),fill=color)
-        d.line((182-inset,48,182-inset,119,163,119),fill=color)
+SPLASH_FRAMES = 32
+
+def splash(frame=31):
+    """A centered torch sends sparks upward to forge the studio's nabla."""
+    from build_font import GLYPHS
+    im = title(branding=True)
+    d = ImageDraw.Draw(im)
+    # All artwork shares x=128; the card itself stays still during the reveal.
+    d.line((128, 189, 128, 197), fill=7, width=3)
+    d.line((127, 190, 127, 196), fill=9)
+    d.rectangle((124, 187, 132, 190), fill=6)
+    lean = (0, 1, 0, -1)[frame & 3]
+    d.polygon([(128+lean, 175), (131+lean, 181), (133, 185),
+               (131, 188), (125, 188), (123, 185), (126, 181)], fill=9)
+    d.polygon([(128+lean, 178), (131, 184), (129, 188),
+               (126, 187), (125, 184)], fill=10)
+    d.line((128, 182, 128, 187), fill=11, width=2)
+
+    # Trace both sides symmetrically, then close the upper bar.
+    progress = max(0, min(1, (frame-5)/17))
+    left = [(128, 116), (92, 56), (128, 56)]
+    right = [(128, 116), (164, 56), (128, 56)]
+    tips = []
+    for path in (left, right):
+        length = progress * 2
+        points = [path[0]]
+        for segment in range(2):
+            amount = min(1, max(0, length-segment))
+            if amount:
+                a, b = path[segment:segment+2]
+                points.append((round(a[0]+(b[0]-a[0])*amount),
+                               round(a[1]+(b[1]-a[1])*amount)))
+        if len(points) > 1:
+            d.line(points, fill=8, width=3)
+            d.line(points, fill=10 if frame < 24 else 9, width=1)
+            tips.append(points[-1])
+    if progress == 1:
+        d.line((94, 56, 162, 56), fill=11)
+        d.line((104, 64, 128, 104, 152, 64, 104, 64), fill=6)
+
+    # Rising particles travel from the flame into the two growing edges.
+    if frame < 25:
+        targets = tips or [(128, 116)]
+        for side, target in enumerate(targets):
+            for particle in range(4):
+                age = ((frame*2+particle*5) % 19)/18
+                x = round(128+(target[0]-128)*age +
+                          math.sin(age*math.pi*2+side*math.pi)*3)
+                y = round(178+(target[1]-178)*age)
+                d.point((x, y), fill=11 if particle == 0 else 9)
+                if particle == 0:
+                    d.point((x, y+1), fill=8)
+        for x, y in tips:
+            d.line((x-1, y, x+1, y), fill=11)
+            d.line((x, y-1, x, y+1), fill=11)
+
+    def caption(label, y, color):
+        widths = [len(GLYPHS[ch][0]) for ch in label]
+        x = 128 - (sum(widths) + 3*(len(label)-1))//2
+        for ch, width in zip(label, widths):
+            for row, bits in enumerate(GLYPHS[ch]):
+                for column, bit in enumerate(bits):
+                    if bit == '1': d.point((x+column, y+row), fill=color)
+            x += width+3
+    if frame >= 24:
+        caption('NABLA TEAM', 128, 8 if frame == 24 else 15)
+    if frame >= 27:
+        caption('PRESENTS', 152, 7 if frame == 27 else 15)
     return im
+
+def splash_animation(assembly):
+    # One shared tile atlas: VBlank changes only the 2 KiB map, never graphics.
+    tiles, index, maps = [], {}, []
+    for frame in range(SPLASH_FRAMES):
+        im = splash(frame)
+        pixels = list(flat_pixels(im))
+        entries = [0]*1024
+        for ty in range(28):
+            for tx in range(32):
+                tile = tuple(pixels[(ty*8+y)*256+tx*8+x]
+                             for y in range(8) for x in range(8))
+                if tile not in index:
+                    index[tile] = len(tiles)
+                    tiles.append(tile)
+                entries[ty*32+tx] = index[tile]
+        payload = struct.pack('<1024H', *entries)
+        maps.append(payload)
+        filename = 'splash-%02d.map'%frame
+        (OUT/filename).write_bytes(payload)
+        assembly += ['.section "splash_frame%d" superfree'%frame,
+                     'splash_frame%d:'%frame,
+                     '.incbin "assets/generated/%s"'%filename, '.ends', '']
+    if len(tiles) > 768:
+        raise ValueError('Splash animation exceeds background VRAM: '+str(len(tiles)))
+    return b''.join(planar(tile, 4) for tile in tiles), maps[0]
 def atlas():
     im,d=canvas(128,256)
     for i,color in enumerate([10,10,11,5,12,7,3,1]):
@@ -538,9 +643,13 @@ def main():
     from build_cinematics import scenes, world_scenes
     OUT.mkdir(parents=True,exist_ok=True)
     assembly=['; Generated by tools/build_assets.py.','.include "hdr.asm"','']
+    from build_hud import build as build_hud
+    build_hud(OUT, assembly)
     backgrounds=[splash(),title(),*world_scenes()]
     for i,im in enumerate(backgrounds):
         name='bg%d'%i; tiles,tilemap=tile_image(im,max_tiles=768,palette_tiles=i>=2)
+        if i == 0:
+            tiles, tilemap = splash_animation(assembly)
         if i == 1:
             tiles, tilemap = menu_torch(tiles, tilemap, assembly)
         (OUT/(name+'.chr')).write_bytes(tiles); (OUT/(name+'.map')).write_bytes(tilemap)

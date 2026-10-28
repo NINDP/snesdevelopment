@@ -21,7 +21,7 @@ void npc_leave(void);
     extern u8 perspective_light##n; \
     extern u8 perspective_glow##n##_224, perspective_glow##n##_128, perspective_glow##n##_88; \
     extern u8 perspective_glow##n##_64, perspective_glow##n##_16, perspective_glow##n##_48; \
-    extern u8 perspective_glow##n##_200, perspective_glow##n##_192;
+    extern u8 perspective_glow##n##_176, perspective_glow##n##_192;
 TORCH_PHASE(0)
 TORCH_PHASE(1)
 TORCH_PHASE(2)
@@ -32,7 +32,7 @@ TORCH_PHASE(12) TORCH_PHASE(13) TORCH_PHASE(14) TORCH_PHASE(15)
 TORCH_PHASE(16) TORCH_PHASE(17) TORCH_PHASE(18) TORCH_PHASE(19)
 #define GLOW_PHASE(n) &perspective_glow##n##_224, &perspective_glow##n##_128, \
     &perspective_glow##n##_88, &perspective_glow##n##_64, \
-    &perspective_glow##n##_16, &perspective_glow##n##_48, &perspective_glow##n##_200, &perspective_glow##n##_192
+    &perspective_glow##n##_16, &perspective_glow##n##_48, &perspective_glow##n##_176, &perspective_glow##n##_192
 static u8 *const light_tables[20] = {
     &perspective_light0, &perspective_light1, &perspective_light2, &perspective_light3,
     &perspective_light4, &perspective_light5, &perspective_light6, &perspective_light7,
@@ -66,6 +66,8 @@ static SkU8 combat_visible = 0;
 static SkU8 enemy_slots_cache = 0, projectiles_visible = 0;
 static SkU8 shove_visible = 0, hurt_visible = 0;
 static SkU8 slots, moving;
+/* Read-only regression counter: publishing PPU state must finish in VBlank. */
+SkU16 video_late_commits = 0;
 /* Fixed 16-bit ABI for the short 65C816 OAM writers. */
 void perspective_obj(SkU16 slot, SkS16 x, SkS16 y, SkU16 tile, SkU16 large);
 void perspective_quad(SkU16 slot, SkS16 x, SkS16 y, SkU16 tile, SkU16 large);
@@ -413,7 +415,7 @@ void perspective_overlay(SkU8 cut) {
     case 64: glow = 3; break;
     case 16: glow = 4; break;
     case 48: glow = 5; break;
-    case 200: glow = 6; break;
+    case 176: glow = 6; break;
     case 192: glow = 7; break;
     }
     light_source.mem.p = light_tables[phase];
@@ -464,13 +466,15 @@ void perspective_overlay(SkU8 cut) {
     layer_table[next][i++] = 1; layer_table[next][i++] = 4; layer_table[next][i] = 0;
     pending_overlay = next + 1;
 }
-void perspective_commit(void) {
+void perspective_commit(SkU8 full_ui) {
     SkU16 hofs = camera_world_x - 128, vofs = camera_world_y - PERSPECTIVE_ANCHOR;
     SkU8 shade;
     REG_HDMAEN = 0;
-    hero_commit();
-    npc_commit();
-    if (sky != palette_sky) {
+    /* A full text map consumes this blank's streaming budget. Otherwise one
+       1 KiB actor upload at most; pending NPC poses carry into the next blank. */
+    if (!full_ui && !hero_commit())
+        npc_commit();
+    if (!full_ui && sky != palette_sky) {
         scene_palettes();
     }
     REG_TMW = sky ? 0 : 0x11;
@@ -522,4 +526,6 @@ void perspective_commit(void) {
     REG_WH2 = 255; REG_WH3 = 0;
     REG_HDMAEN = sky ? 0xfe : 0x7e;
     REG_INIDISP = 15;
+    if (!(REG_HVBJOY & 0x80))
+        ++video_late_commits;
 }
