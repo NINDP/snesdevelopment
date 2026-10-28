@@ -47,12 +47,15 @@ class JournalLayoutTests(unittest.TestCase):
         for key, value in json.loads(source.read_text())['ui'].items():
             if not key.startswith(('J_', 'G_')):
                 continue
+            width = 25
+            if key.startswith('J_'):
+                value = value.replace('\n', ' ')
             lines = [line for paragraph in value.split('\n')
-                     for line in textwrap.wrap(paragraph, 30, break_long_words=False,
+                     for line in textwrap.wrap(paragraph, width, break_long_words=False,
                                                break_on_hyphens=False) or ['']]
             with self.subTest(key=key):
-                self.assertLessEqual(len(lines), 4 if key.startswith('J_') else 2)
-                self.assertTrue(all(len(line) <= 30 for line in lines))
+                self.assertLessEqual(len(lines), 7 if key.startswith('J_') else 4)
+                self.assertTrue(all(len(line) <= width for line in lines))
 
 class LinkFailureTests(unittest.TestCase):
     def setUp(self):

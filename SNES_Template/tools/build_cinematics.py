@@ -64,7 +64,7 @@ def scenes():
     # Both screens share tiles and palettes: crossing the doorway needs only
     # BG1 scroll writes, with no forced blank, DMA or palette replacement.
     panorama = Image.new('RGB', (512, 128))
-    for column, name in enumerate(('OpeningGymScene.png', 'Scene2Corridor.png')):
+    for column, name in enumerate(('OpeningGymScene.png', 'Scene2Corridor-down.png')):
         panorama.paste(Image.open(SOURCE / name).convert('RGB').resize(
             (256, 128), Image.Resampling.LANCZOS), (column * 256, 0))
     panorama = indexed_scene(panorama, 128)

@@ -125,22 +125,12 @@ def planar(tile):
 def oam_frame(facing,tick,planted=False):
     gx,gy=PLANTED_GRIP if planted else GRIPS[facing]
     fx,fy=PLANTED_FLAME if planted else FLAMES[facing]
-    phase=(tick>>2)&7
-    halo_tile=160+(4 if (phase&2) else 0)
-    result=bytearray((fx-16,fy-16,halo_tile,0x1c,
-                      gx-8,gy-26,96+phase*2,0x2c,
-                      gx-8,gy-10,128+phase*2,0x2c))
-    for n in range(5):
-        age=(tick+n*6)&31
-        dx=DRIFT[(age+n*5)&31] + (n%3)-1
-        y=fy-4-age
-        tile=168 if age<7 else (170 if age<15 else (172 if age<24 else 174))
-        if n&1:
-            tile+=32
-        # Two final ticks vanish, so embers don't loop visibly at the top.
-        if age>=30:
-            y=240
-        result.extend(((fx+dx-8)&255,(y-8)&255,tile,0x2c))
+    # Four 16px cells share one narrow column: two slivers per scanline,
+    # rather than a halo, flame and five overlapping 16px particle sprites.
+    result=bytearray()
+    for cell in range(4):
+        result.extend((fx-8,fy-40+cell*16,96+cell*32,0x2c))
+    result.extend(bytes((0,240,0,0))*4)
     assert len(result)==32
     return bytes(result)
 
@@ -155,8 +145,20 @@ def build(out,assembly):
     atlas.paste(halo(1),(32,32))
     for n in range(8):
         atlas.paste(ember(n),(64+(n&3)*16,32+(n//4)*16))
-    payload=b''.join(planar(list(atlas.crop((x,y,x+8,y+8)).getdata()))
-                     for y in range(0,64,8) for x in range(0,128,8))
+    frames=[]
+    for phase in range(8):
+        view=canvas((16,64))
+        torch=flame(phase)
+        view.paste(torch,(0,31))
+        for n in range(5):
+            age=(phase*4+n*6)&31
+            if age<30:
+                x=8+DRIFT[(age+n*5)&31]+(n%3)-1
+                y=36-age
+                ImageDraw.Draw(view).point((x,y),fill=14 if age<7 else (13 if age<15 else 11))
+        frames.append(view)
+    payload=b''.join(planar(list(view.crop((x,y,x+8,y+8)).getdata()))
+                     for view in frames for y in range(0,64,8) for x in range(0,16,8))
     assert len(payload)==4096
     (out/'torch.chr').write_bytes(payload)
     (out/'torch.pal').write_bytes(struct.pack('<16H',*(r//8+g//8*32+b//8*1024 for r,g,b in PALETTE)))
@@ -174,6 +176,9 @@ def build(out,assembly):
                '.incbin "assets/generated/torch-oam.bin"','torch_planted_oam_frames:',
                '.incbin "assets/generated/torch-planted-oam.bin"','.ends','']
     atlas.save(out/'torch-atlas.png',transparency=0)
+    strip=canvas((128,64))
+    for n,frame in enumerate(frames):strip.paste(frame,(n*16,0))
+    strip.save(out/'torch-compact.png',transparency=0)
     # Readable animation preview, in indexed colors and exact integer pixels.
     frames=[]
     for frame in range(8):

@@ -115,9 +115,20 @@ def report():
                 raise ValueError('Torch brightness must not dim the interface')
             light_bytes+=len(payload)
     font = (assets / 'font.chr').stat().st_size
+    journal_bytes = (assets/'journal.chr').stat().st_size
+    journal_match = re.search(r'^([0-9a-fA-F]{8}) journal_tiles$', symbols, re.M)
+    if (journal_bytes > 24576 or (assets/'journal.map').stat().st_size != 2048 or
+        not journal_match or (int(journal_match[1],16)&0x7fff) + journal_bytes + 2112 > 32768):
+        raise ValueError('Journal artwork must fit its VRAM and LoROM bank')
     sprites = (assets / 'sprites.chr').stat().st_size
     if font > 6144 or sprites > 16384:
         raise ValueError('Font/OBJ tiles overlap a neighbouring VRAM slot')
+    intro_frames=list(assets.glob('intro-actor-*.chr'))
+    intro_addresses=re.findall(r'^([0-9a-fA-F]{8}) intro_actor\d+$',symbols,re.M)
+    if len(intro_frames)!=8 or any(p.stat().st_size!=1024 for p in intro_frames) or len(intro_addresses)!=8:
+        raise ValueError('Expected eight 1 KiB introduction poses')
+    if any((int(addr,16)&0x7fff)>32768-1024 for addr in intro_addresses):
+        raise ValueError('Introduction pose DMA crosses a LoROM bank')
     hero_frames=list(assets.glob('hero-*.chr'))
     if len(hero_frames)!=32 or any(path.stat().st_size!=1024 for path in hero_frames):
         raise ValueError('Expected 32 streamed 1 KiB hero frames')

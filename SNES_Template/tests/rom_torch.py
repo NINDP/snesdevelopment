@@ -22,7 +22,10 @@ def run(core, pal=False):
     assert 0<=address<0x20000-544
     vram=e.lib.retro_get_memory_data(3)
     assert vram
-    def oam():return C.string_at(e.memory+address+52*4,32)
+    slot_address=int(re.search(r'^([0-9a-fA-F]{8}) torch_slot$',symbols,re.M)[1],16)-0x7e0000
+    def oam():
+        slot=int.from_bytes(C.string_at(e.memory+slot_address,2),'little')
+        return C.string_at(e.memory+address+slot*4,16)
     def frame():
         e.want_frame=True;e.run(1);e.want_frame=False
         assert e.frame is not None
@@ -45,14 +48,15 @@ def run(core, pal=False):
             cx,cy=TORCH_CENTERS[facing]
             poses=set();trails=set();skin_frames=0
             for tick in range(40):
-                image=frame();data=oam();poses.add(data)
-                # Two 16x16 cells meet without a gap, with the flame and grip
-                # anchored to the same hand in every view and idle pose.
-                tx,ty,tile,attr=data[4:8]
-                bx,by,btile,battr=data[8:12]
-                assert (tx+8,ty+9)==(cx,cy),(facing,data)
-                assert bx==tx and by==ty+16 and btile==tile+32
-                assert attr==battr==0x2c and 96<=tile<=110
+                image=frame();data=oam()
+                resident=b"".join(C.string_at(vram+0xcc00+row*512,64) for row in range(8))
+                atlas=(ROOT/"assets/generated/torch.chr").read_bytes()
+                assert resident in [atlas[i*512:(i+1)*512] for i in range(8)]
+                poses.add(resident)
+                for cell in range(4):
+                    tx,ty,tile,attr=data[cell*4:cell*4+4]
+                    assert (tx+8,ty+40-cell*16)==(cx,cy),(facing,data)
+                    assert tile==96+cell*32 and attr==0x2c
                 pixels=np.asarray(image)
                 hand=pixels[cy+16:cy+19,cx-1:cx+2].astype(np.int16)
                 # Skin from the hero's palette is distinct from wood/flame.
@@ -64,10 +68,10 @@ def run(core, pal=False):
                 r.check_darkness('torch-'+str(facing),e.state())
                 if tick%4==0:images.append(image)
             assert (e.state()['x'],e.state()['y'])==stopped
-            assert len(poses)>=24,('Particles repeat or freeze',facing,len(poses))
-            assert len(trails)>=8,('Rising sparks missing from PPU',facing,len(trails))
+            assert len(poses)==8,('Particles repeat or freeze',facing,len(poses))
+            assert len(trails)>=6,('Rising sparks missing from PPU',facing,len(trails))
             assert skin_frames>=35,('Torch does not meet the hand',facing,skin_frames)
-            records.append({'facing':facing,'oam_poses':len(poses),
+            records.append({'facing':facing,'streamed_poses':len(poses),
                             'visible_spark_states':len(trails),'hand_frames':skin_frames})
         e.tap(3);e.wait_mode(7);e.run(12)
         stopped_oam=oam();clock=e.state()['tick']
@@ -75,7 +79,7 @@ def run(core, pal=False):
         assert oam()==stopped_oam and e.state()['tick']==clock,'Paused fire keeps animating'
         e.tap(3);e.wait_mode(3);e.tap(9);e.run(12)
         frame();r.check_darkness('torch-off',e.state())
-        assert all(oam()[offset]==240 for offset in range(1,32,4)),'Unlit particles remain in OAM'
+        assert all(oam()[offset]==240 for offset in range(1,16,4)),'Unlit particles remain in OAM'
         e.tap(3);e.wait_mode(7)
         e.tap(5);e.tap(5);e.tap(8);e.wait_mode(1);e.run(12)
         atlas=(ROOT/'assets/generated/sprites.chr').read_bytes()

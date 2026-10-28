@@ -34,9 +34,14 @@ class StoryRunner(Runner):
 
     def memory_journal(self, key, label):
         self.e.tap(1); self.e.wait_mode(6)
+        self.e.tap(7)
+        self.e.wait_state(lambda state: state['journal_page'] == 1, 'Open journal notes')
         filename = 'story-journal-'+label+'-'+('pal' if self.e.pal else 'ntsc')+'.png'
         self.shots.append(self.e.capture(filename))
-        self.assert_map_text(self.content['ui'][key], 1, 13)
+        paragraph = self.content['ui'][key].replace('\n', ' ')
+        wrapped = '\n'.join(textwrap.wrap(paragraph, 25, break_long_words=False,
+                                           break_on_hyphens=False))
+        self.assert_map_text(wrapped, 5, 12)
         self.e.tap(0); self.e.wait_mode(3)
 
     def finish(self):
@@ -90,7 +95,7 @@ def run(core, pal=False):
         e.tap(1); e.wait_mode(6)
         e.run(12)
         vram = e.lib.retro_get_memory_data(3)
-        digit = struct.unpack('<H', C.string_at(vram+0xb800+19*64+16*2, 2))[0] & 1023
+        digit = struct.unpack('<H', C.string_at(vram+0xb800+26*64+12*2, 2))[0] & 1023
         assert digit == ord('3'), 'Written evidence counter missing from journal'
         e.tap(0); e.wait_mode(3)
         for index in range(3):

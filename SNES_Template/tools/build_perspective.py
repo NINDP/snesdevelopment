@@ -141,16 +141,23 @@ def build(out, assembly, palette):
            [(28,68,396,3),(224,68,396,3),(28,120,396,3),(224,120,396,3)],
            [(20,44,492,2),(80,44,492,2),(176,44,492,2),(232,44,492,2)]]
     counts=[]
+    critical=[]
     for room in range(4):
         objects=[(x,y,*props[room][i]) for i,(x,y,_) in enumerate(rooms[room]['hotspots'])]
         # Decorative crowns must not replace the floor's movement target.
         objects += [(x,y,tile,kind|0x80) for x,y,tile,kind in decor[room]]
         objects.sort(key=lambda obj:obj[1],reverse=True)
         costs={0:6,1:2,2:1,3:1,4:4,5:4}
-        if sum(costs[obj[3]&0x7f] for obj in objects)+6>50:
+        if sum(costs[obj[3]&0x7f] for obj in objects)+10>54:
             raise ValueError('Scenery/hero overlap enemy and torch OBJ slots')
+        indices=sorted((i for i,obj in enumerate(objects) if (obj[3]&0x7f) in (0,4)),
+                       key=lambda i:(0 if (objects[i][3]&0x7f)==4 else 1,-i))
+        if len(indices)>5 or len(objects)>26:
+            raise ValueError('Critical scenery cache capacity exceeded')
+        critical.append(indices+[255]*(6-len(indices)))
         counts.append(len(objects))
         content.append('static const PerspectiveObject objects%d[] = {'%room+','.join('{%d,%d,%d,%d}'%obj for obj in objects)+'};')
     content.append('const PerspectiveObject *const perspective_objects[4] = {objects0,objects1,objects2,objects3};')
     content.append('const SkU8 perspective_counts[4] = {'+','.join(map(str,counts))+'};')
+    content.append('const SkU8 perspective_critical_indices[4][6] = {'+','.join('{'+','.join(map(str,row))+'}' for row in critical)+'};')
     (ROOT/'Data/content/perspective.c').write_text('\n'.join(content)+'\n')

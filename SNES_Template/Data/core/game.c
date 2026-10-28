@@ -54,6 +54,9 @@ void game_new(Game *g) {
     g->oil = 120;
     enter_room(g, 0);
     begin_dialogue(g, D_PROLOG);
+    g->x = g->destination_x = CORRIDOR_START;
+    g->y = 110;
+    g->direction = 2;
 }
 void game_checkpoint(Game *g) {
     if (g->mode == G_AMBUSH || (g->mode == G_PAUSE && g->return_mode == G_AMBUSH)) {
@@ -527,7 +530,7 @@ static void corridor_tick(Game *g, const SkInput *in) {
         g->x = CORRIDOR_START;
     if (g->x > CORRIDOR_END)
         g->x = CORRIDOR_END;
-    g->y = g->x > 464 ? 110 - (g->x - 464) * 2 : 110;
+    g->y = g->x > 464 ? 110 - (g->x - 464) : 110;
     if (g->x == CORRIDOR_END) {
         g->mode = G_DIALOGUE;
         g->x = 124;
@@ -667,11 +670,20 @@ void game_tick(Game *g, const SkInput *in) {
         return;
     }
     if (g->mode == G_JOURNAL) {
+        if (in->pressed & (SK_LEFT | SK_RIGHT))
+            g->journal_page ^= 1;
         if (advance || (in->pressed & (SK_JOURNAL | SK_BACK)))
             g->mode = G_EXPLORE;
         return;
     }
     if (g->mode == G_DIALOGUE) {
+        if (g->dialogue == D_PROLOG && g->page == 0) {
+            SkU16 chase = g->tick > 24 ? g->tick - 24 : 0;
+            if (chase > 104) chase = 104;
+            g->x = g->destination_x = CORRIDOR_START + chase;
+            g->y = 110;
+            g->direction = 2;
+        }
         line = story_line(g->dialogue, g->page);
         length = line ? line->length : 0;
         if (g->revealed < length && ++g->text_delay >= 6) {
@@ -689,7 +701,7 @@ void game_tick(Game *g, const SkInput *in) {
                 g->text_delay = 0;
                 if (g->dialogue == D_PROLOG && g->page == 1) {
                     g->mode = G_CORRIDOR;
-                    g->x = g->destination_x = CORRIDOR_START;
+                    g->destination_x = g->x;
                     g->y = 110;
                     g->direction = 2;
                 }
@@ -769,6 +781,7 @@ void game_tick(Game *g, const SkInput *in) {
         return;
     if (in->pressed & SK_JOURNAL) {
         g->mode = G_JOURNAL;
+        g->journal_page = 0;
         g->bow_draw = g->shot_request = 0;
         return;
     }

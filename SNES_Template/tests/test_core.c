@@ -330,6 +330,23 @@ static void test_scope_billboard(void) {
     assert(wx == sx && wy == sy);
     assert(game_can_walk(g.room, wx, wy));
 }
+static void test_journal_pages(void) {
+    Game g;
+    SkU16 second;
+    game_new(&g);
+    finish(&g);
+    second = g.day_seconds;
+    press(&g, SK_JOURNAL);
+    assert(g.mode == G_JOURNAL && g.journal_page == 0);
+    press(&g, SK_RIGHT);
+    assert(g.mode == G_JOURNAL && g.journal_page == 1 && g.day_seconds == second);
+    press(&g, SK_LEFT);
+    assert(g.journal_page == 0 && g.day_seconds == second);
+    press(&g, SK_BACK);
+    assert(g.mode == G_EXPLORE);
+    press(&g, SK_JOURNAL);
+    assert(g.journal_page == 0);
+}
 static void test_clock_and_text(void) {
     SkClock clock = {0};
     unsigned i, ticks = 0;
@@ -626,6 +643,7 @@ int main(void) {
     test_corridor();
     test_radial_torch();
     test_clock_and_text();
+    test_journal_pages();
     test_light();
     test_darkness_pause_and_recovery();
     test_puzzle_back_and_wrong_order();
