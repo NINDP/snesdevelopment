@@ -683,12 +683,18 @@ void video_draw(const Game *g, SkU8 scope) {
             brightness = (SkU8)((150 - g->tick) / 2);
     }
     /* Text stays readable, but even pause must not reveal an unlit world. */
-    if (!projected)
+    if (!projected) {
         flashlight_prepare(g, world);
-    if (world && g->lamp && g->oil)
-        bgSetEnable(1);
-    else
-        bgSetDisable(1);
+        if (g->mode != G_JOURNAL) {
+            if (world && g->lamp && g->oil)
+                bgSetEnable(1);
+            else
+                bgSetDisable(1);
+        }
+    }
+    /* Perspective HDMA owns TM for the entire raster, including dialogues.
+       Calling the SDK's BG toggle here publishes its stale Mode1 layer mask
+       during active display and can expose the Mode7 plane as 4bpp tiles. */
     if (cinematic)
         draw_cinematic(g);
     if (corridor)

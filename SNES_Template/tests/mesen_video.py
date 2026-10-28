@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mesen hardware regression: DMA ownership, visible transfers and UI roundtrips.
+"""Mesen regression: raster ownership, dialogue horizons, journal layers and DMA.
 
 Only controller input is injected; game RAM and PPU registers remain read-only.
 The headless runner disables saving Mesen settings. Lua IO is enabled only for
@@ -23,7 +23,9 @@ local buttons={}
 local spriteOverflow,maxTiles,worldSamples=0,0,0
 local houseChecks,houseFailures,steady,lastX,lastY=0,0,0,-1,-1
 local depthChecks,depthFailures=0,0
-local horizonSamples=0
+local horizonSamples,dialogueHorizonSamples,projectedLayerWrites=0,0,0
+local journalChecks,journalLayerFailures=0,0
+local prologHolds={[3]=0,[4]=0}
 local depths=@DEPTHS@
 local scales=@SCALES@
 local function byte(offset) return emu.read(game+offset,emu.memType.snesWorkRam) end
@@ -103,6 +105,20 @@ local function dmaWrite(address,value)
   visibleDma=visibleDma+1
  end
 end
+local function layerWrite(address,value)
+ local mode=byte(0)
+ local dialogue=byte(2)
+ local projected=mode==3 or (mode==2 and dialogue~=22 and (dialogue~=0 or byte(3)>=3))
+ if not projected then return end
+ local state=emu.getState()
+ local line=state['ppu.scanline']
+ local clock=state['memoryManager.hClock']
+ if not state['ppu.forcedBlank'] and line>0 and line<225 and clock>88 and clock<1096 then
+  projectedLayerWrites=projectedLayerWrites+1
+ end
+end
+emu.addMemoryCallback(layerWrite,emu.callbackType.write,0x212c)
+emu.addMemoryCallback(layerWrite,emu.callbackType.write,0x80212c)
 -- The SDK uses DB=$80, whereas the C platform writes long bank-$00 registers.
 emu.addMemoryCallback(dmaWrite,emu.callbackType.write,0x420b)
 emu.addMemoryCallback(dmaWrite,emu.callbackType.write,0x80420b)
@@ -121,21 +137,38 @@ emu.addEventCallback(function()
  if x==lastX and y==lastY then steady=steady+1 else steady=0 end
  lastX,lastY=x,y
  if mode==3 and byte(1)==0 and byte(56)>0 and steady>8 and frame%8==0 and not emu.getState()['ppu.forcedBlank'] then checkHouses(x,y) end
- if mode==3 and byte(1)==0 and byte(56)==16 and steady>8 and frame%512==0 and not emu.getState()['ppu.forcedBlank'] then
+ local scenic=mode==2 and byte(2)==0 and byte(3)>=3
+ if (mode==3 or scenic) and byte(1)==0 and byte(56)==16 and steady>8 and ((mode==3 and frame%512==0) or (scenic and frame%32==0)) and not emu.getState()['ppu.forcedBlank'] then
   local name='horizon-'..frame
   screenshot(name)
+  -- takeScreenshot() reads the asynchronous display decoder. Assert against
+  -- the completed PPU buffer, not a potentially older displayed frame.
+  local size=emu.getScreenSize()
+  local pixels=emu.getScreenBuffer()
+  local raw=assert(io.open(output..'/mesen-'..name..'.rgb','wb'))
+  raw:write(string.pack('<I4I4',size.width,size.height))
+  for n=1,#pixels do local c=pixels[n];raw:write(string.char((c>>16)&255,(c>>8)&255,c&255)) end
+  raw:close()
   local file=assert(io.open(output..'/mesen-'..name..'.bin','wb'))
   file:write(string.char(x&255,(x>>8)&255,y&255,(y>>8)&255))
   for n=0,543 do file:write(string.char(emu.read(n,emu.memType.snesSpriteRam))) end
   file:close();horizonSamples=horizonSamples+1
+  if scenic then dialogueHorizonSamples=dialogueHorizonSamples+1 end
  end
  local phase=frame%96
+ if mode==6 and phase>=20 and phase<=64 and not emu.getState()['ppu.forcedBlank'] then
+  journalChecks=journalChecks+1
+  local state=emu.getState()
+  if state['ppu.bgMode']~=1 or state['ppu.mainScreenLayers']~=5 then journalLayerFailures=journalLayerFailures+1 end
+ end
  if mode==6 and previous~=6 then journals=journals+1 end
  if mode==7 and previous~=7 then pauses=pauses+1 end
  previous=mode
  buttons={a=false,b=false,x=false,y=false,start=false,select=false,
           l=false,r=false,up=false,down=false,left=false,right=false}
- if mode==1 or mode==2 then buttons.a=(frame%24)<8
+ if mode==2 and byte(2)==0 and prologHolds[byte(3)]~=nil and prologHolds[byte(3)]<144 then
+  prologHolds[byte(3)]=prologHolds[byte(3)]+1
+ elseif mode==1 or mode==2 then buttons.a=(frame%24)<8
  elseif mode==12 then buttons.right=true
  elseif mode==3 then
   age=age+1
@@ -161,10 +194,10 @@ emu.addEventCallback(function()
   screenshot('final')
   local file=assert(io.open(output..'/mesen-video.json','w'))
   file:write(string.format('{"frames":%d,"collisions":%d,"visible_dma":%d,"late_publish":%d,'..
-   '"horizon_samples":%d,"torch_depth_checks":%d,"torch_depth_failures":%d,"house_checks":%d,"house_failures":%d,"sprite_overflow":%d,"maximum_tiles_per_scanline":%d,"world_samples":%d,"journal_entries":%d,"pause_entries":%d,"night":%s,"overview":%s,"notes":%s}',
-   frame,collisions,visibleDma,latePublish,horizonSamples,depthChecks,depthFailures,houseChecks,houseFailures,spriteOverflow,maxTiles,worldSamples,journals,pauses,tostring(night),tostring(overview),tostring(notes)))
+   '"journal_checks":%d,"journal_layer_failures":%d,"projected_layer_writes":%d,"dialogue_horizon_samples":%d,"horizon_samples":%d,"torch_depth_checks":%d,"torch_depth_failures":%d,"house_checks":%d,"house_failures":%d,"sprite_overflow":%d,"maximum_tiles_per_scanline":%d,"world_samples":%d,"journal_entries":%d,"pause_entries":%d,"night":%s,"overview":%s,"notes":%s}',
+   frame,collisions,visibleDma,latePublish,journalChecks,journalLayerFailures,projectedLayerWrites,dialogueHorizonSamples,horizonSamples,depthChecks,depthFailures,houseChecks,houseFailures,spriteOverflow,maxTiles,worldSamples,journals,pauses,tostring(night),tostring(overview),tostring(notes)))
   file:close()
-  emu.stop(horizonSamples>=3 and depthFailures==0 and depthChecks>100 and houseFailures==0 and houseChecks>100 and spriteOverflow==0 and worldSamples>100 and collisions==0 and visibleDma==0 and latePublish==0 and journals>=12 and pauses>=12 and night and notes and 0 or 1)
+  emu.stop(journalLayerFailures==0 and journalChecks>=100 and projectedLayerWrites==0 and dialogueHorizonSamples>=6 and horizonSamples>=3 and depthFailures==0 and depthChecks>100 and houseFailures==0 and houseChecks>100 and spriteOverflow==0 and worldSamples>100 and collisions==0 and visibleDma==0 and latePublish==0 and journals>=12 and pauses>=12 and night and notes and 0 or 1)
  end
 end,emu.eventType.endFrame)
 emu.addEventCallback(function() emu.setInput(buttons,0) end,emu.eventType.inputPolled)
@@ -183,7 +216,12 @@ def check_horizon():
     compared=corrupt=0
     for path in (ROOT/'build').glob('mesen-horizon-*.bin'):
         data=path.read_bytes();x=int.from_bytes(data[:2],'little');oam=data[4:]
-        pixels=np.asarray(Image.open(path.with_suffix('.png')).convert('RGB')).astype(int)
+        import struct
+        raw=path.with_suffix('.rgb').read_bytes()
+        width,height=struct.unpack_from('<II',raw)
+        assert (width,height)==(256,239),('Unexpected PPU frame size',width,height)
+        pixels=np.frombuffer(raw[8:],dtype=np.uint8).reshape(height,width,3)[7:231].astype(int)
+        Image.fromarray(pixels.astype(np.uint8)).save(path.with_name(path.stem+'-ppu.png'))
         mask=np.ones((224,256),dtype=bool)
         for n in range(128):
             sx,sy,_,_=oam[n*4:n*4+4];high=(oam[512+n//4]>>((n%4)*2))&3
@@ -193,13 +231,13 @@ def check_horizon():
                 mask[sy:min(224,sy+size),max(0,sx):min(256,sx+size)]=False
         # BG2 VOFS=0 exposes source row1 on visible scanline0. The last
         # parallax band starts at64 and scrolls at one quarter camera speed.
-        expected=source[np.arange(65,87)[:,None],(np.arange(256)[None,:]+(x>>2))%256]
-        mismatch=np.max(np.abs(pixels[64:86]-expected),axis=2)>8
-        compared+=int(np.count_nonzero(mask[64:86]))
-        corrupt+=int(np.count_nonzero(mismatch&mask[64:86]))
+        expected=source[np.arange(65,88)[:,None],(np.arange(256)[None,:]+(x>>2))%256]
+        mismatch=np.max(np.abs(pixels[64:87]-expected),axis=2)>8
+        compared+=int(np.count_nonzero(mask[64:87]))
+        corrupt+=int(np.count_nonzero(mismatch&mask[64:87]))
     assert compared>5000,'Insufficient actual sky pixels captured'
     assert corrupt==0,('Corrupted horizon pixels',corrupt,compared)
-    return {'horizon_compared_pixels':compared,'horizon_corrupt_pixels':corrupt}
+    return {'horizon_capture':'ppu','horizon_compared_pixels':compared,'horizon_corrupt_pixels':corrupt}
 
 
 def run(mesen, frames=15000):
@@ -238,6 +276,8 @@ def run(mesen, frames=15000):
     print(json.dumps(report))
     assert result.returncode == 0, 'Mesen detected unsafe DMA or an incomplete route'
     assert report['collisions'] == report['visible_dma'] == report['late_publish'] == 0
+    assert report['journal_layer_failures'] == 0 and report['journal_checks'] >= 100
+    assert report['projected_layer_writes'] == 0 and report['dialogue_horizon_samples'] >= 6
     assert report['horizon_samples'] >= 3 and report['horizon_corrupt_pixels'] == 0
     assert report['torch_depth_checks'] > 100 and report['torch_depth_failures'] == 0
     assert report['house_checks'] > 100 and report['house_failures'] == 0
@@ -245,7 +285,7 @@ def run(mesen, frames=15000):
     assert report['world_samples'] > 100
     assert report['journal_entries'] >= 12 and report['pause_entries'] >= 12
     assert report['night'] and report['notes'] and report['overview']
-    print('PASS: Mesen DMA ownership, VBlank transfers, journal pages and night rendering')
+    print('PASS: Mesen raster ownership, dialogue horizons, journal artwork/layers, DMA and night rendering')
 
 
 if __name__ == '__main__':

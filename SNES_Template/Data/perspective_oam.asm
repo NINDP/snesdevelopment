@@ -76,26 +76,11 @@ perspective_obj_flags:
     rep #$20
     rtl
 perspective_clear:
-    ldx #0
     sep #$20
--:
     lda #240
-    sta.l oamMemory+1,x
-    sta.l oamMemory+5,x
-    sta.l oamMemory+9,x
-    sta.l oamMemory+13,x
-    sta.l oamMemory+17,x
-    sta.l oamMemory+21,x
-    sta.l oamMemory+25,x
-    sta.l oamMemory+29,x
-    rep #$20
-    txa
-    clc
-    adc #32
-    tax
-    sep #$20
-    cpx #288
-    bne -
+    .rept 72 INDEX q
+    sta.l oamMemory+1+q*4
+    .endr
     rep #$20
     ; Slots0..71 use eighteen high-table bytes. Reset both size and ninth-X
     ; bits once per scene rebuild, instead of masking every small billboard.
@@ -282,29 +267,45 @@ perspective_budget_reset:
     sep #$20
     lda 4,s
     sta.l sprite_band_limit
-    lda #0
-    ldx #10
--:
-    sta.l sprite_bands,x
-    dex
-    bpl -
-    lda #2
-    ldx #10
--:
-    sta.l sprite_bands,x
-    dex
-    cpx #5
-    bcs -
-    lda #6
-    ldx #10
--:
-    sta.l sprite_bands,x
-    dex
-    cpx #7
-    bcs -
     rep #$20
+    lda #0
+    sta.l sprite_bands
+    sta.l sprite_bands+2
+    sep #$20
+    sta.l sprite_bands+4
+    rep #$20
+    lda #$0202
+    sta.l sprite_bands+5
+    lda #$0606
+    sta.l sprite_bands+7
+    sta.l sprite_bands+9
     rtl
 perspective_lod:
+    ; Every LOD touches its bottom band. If even one 16px cell cannot fit,
+    ; reject once instead of retrying all three footprints in a dense scene.
+    lda 6,s
+    dec a
+    cmp #176
+    bcs lod_bottom_ready
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    tax
+    sep #$20
+    lda.l sprite_bands,x
+    clc
+    adc #2
+    cmp.l sprite_band_limit
+    bcc lod_bottom_fits
+    beq lod_bottom_fits
+    rep #$20
+    lda #0
+    sta.b tcc__r0
+    rtl
+lod_bottom_fits:
+    rep #$20
+lod_bottom_ready:
     stz.b tcc__r3
     lda #16
     sta.b tcc__r3h
@@ -951,6 +952,90 @@ perspective_project:
     sta.b tcc__r0
     rtl
 perspective_project_hidden:
+    lda #0
+    sta.b tcc__r0
+    rtl
+.ends
+
+; Billboard projection reads packed ROM coordinates directly. This avoids
+; loading them into the C stack and passing the camera pointer for every prop.
+.section "perspective_project_object" superfree
+perspective_project_object:
+    lda 4,s
+    sta.b tcc__r5
+    lda 6,s
+    sta.b tcc__r5h
+    ldy #2
+    lda [tcc__r5],y
+    sec
+    sbc.l camera_world_y
+    clc
+    adc #576
+    cmp #231
+    bcc +
+    brl object_project_hidden
++:
+    tax
+    sep #$20
+    lda.l perspective_size,x
+    sta.b tcc__r4
+    lda.l perspective_y,x
+    rep #$20
+    and #$ff
+    sta.b tcc__r2
+    lda 12,s
+    sta.b tcc__r1
+    lda 14,s
+    sta.b tcc__r1h
+    lda.b tcc__r2
+    sta [tcc__r1]
+    lda [tcc__r5]
+    sec
+    sbc.l camera_world_x
+    clc
+    adc #384
+    sta.b tcc__r3
+    clc
+    adc #255
+    cmp #511
+    bcc +
+    brl object_project_hidden
++:
+    lda.b tcc__r3
+    bpl +
+    eor #$ffff
+    inc a
++:
+    sep #$20
+    sta.l $004202
+    lda.b tcc__r4
+    sta.l $004203
+    rep #$20
+    lda 8,s
+    sta.b tcc__r1
+    lda 10,s
+    sta.b tcc__r1h
+    lda.l $004216
+    ldx.b tcc__r3
+    bpl +
+    eor #$ffff
+    inc a
++:
+    .rept 6
+    cmp #$8000
+    ror a
+    .endr
+    clc
+    adc #128
+    sta [tcc__r1]
+    clc
+    adc #32
+    cmp #320
+    bcs object_project_hidden
+    lda #1
+    sta.b tcc__r0
+    rtl
+object_project_hidden:
     lda #0
     sta.b tcc__r0
     rtl

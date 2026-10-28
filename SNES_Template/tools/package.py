@@ -27,6 +27,8 @@ def main():
     mesen=json.loads((ROOT/'build/mesen-video.json').read_text())
     if (mesen.get('rom_sha256')!=hashlib.sha256(rom).hexdigest() or
         any(mesen.get(key)!=0 for key in ('collisions','visible_dma','late_publish','sprite_overflow')) or
+        mesen.get('projected_layer_writes',-1)!=0 or mesen.get('dialogue_horizon_samples',0)<6 or
+        mesen.get('journal_layer_failures',-1)!=0 or mesen.get('journal_checks',0)<100 or
         mesen.get('horizon_samples',0)<3 or mesen.get('horizon_corrupt_pixels',-1)!=0 or
         mesen.get('torch_depth_failures',-1)!=0 or mesen.get('torch_depth_checks',0)<100 or
         mesen.get('house_failures',-1)!=0 or mesen.get('house_checks',0)<100 or
@@ -144,7 +146,7 @@ def main():
         'good-pad-ntsc-chapel.png','good-pad-ntsc-dungeon.png']
     labels=['Черноречье · земля и мох','Лес · тропа и корни',
         'Часовня · деревянный пол','Под часовней · камень']
-    font=ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',18)
+    font=ImageFont.truetype(next(str(path) for path in (Path('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'),Path('/System/Library/Fonts/Supplemental/Arial.ttf')) if path.exists()),18)
     sheet=Image.new('RGB',(1088,1000),(0,0,0));draw=ImageDraw.Draw(sheet)
     for i,(name,label) in enumerate(zip(names,labels)):
         x=16+(i%2)*536;y=10+(i//2)*494

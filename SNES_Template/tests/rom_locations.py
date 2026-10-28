@@ -104,7 +104,7 @@ def run(core,pal=False):
         # The full legacy atlas is needed when returning to the Mode1 intro.
         e.tap(3);e.wait_mode(7);e.tap(5);e.tap(5);e.tap(8);e.wait_mode(1);e.run(12)
         assert C.string_at(vram+0xc000,16384)==(ROOT/'assets/generated/sprites.chr').read_bytes(),'Scenery leaked into the intro'
-        font=ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',14)
+        font=ImageFont.truetype(next(str(path) for path in (Path('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'),Path('/System/Library/Fonts/Supplemental/Arial.ttf')) if path.exists()),14)
         selected=[('village-homestead','Староста · двор'),('village-egor','Егор · запасы'),
                   ('forest-miroslava','Мирослава · тропа'),('forest-ford','Лес · брод'),
                   ('village-night','Деревня · ночь'),('forest-night','Лес · ночь')]

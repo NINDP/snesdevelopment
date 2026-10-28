@@ -44,7 +44,7 @@ def run(core, pal=False, allow_cadence_drops=False):
         e.want_frame = False
         assert e.frame is not None and e.frame.size == (256, 224)
         s = e.state()
-        if s['room'] == 1 and s['sun_level'] == 0:
+        if s['mode'] == 3 and s['room'] == 1 and s['sun_level'] == 0:
             pixels = np.asarray(e.frame)
             cut = world_cut(s)
             cy = 145 if s['bow_mode'] else ((125, 126, 127, 126)[(s['direction'] >> 1) & 3])
@@ -117,6 +117,19 @@ def run(core, pal=False, allow_cadence_drops=False):
         oam = C.string_at(e.memory + oam_address, 544)
         slots = (56, 60, 62, 64)
         assert all(oam[slot*4+1] != 240 for slot in slots), 'A fourth-night actor is missing from OAM'
+
+        # A fullscreen journal must hide every combat slot, including the
+        # fourth creature beyond the legacy 64-slot cinematic actor range.
+        vram=e.lib.retro_get_memory_data(3)
+        world_tiles=C.string_at(vram,0xa000)
+        e.tap(1);e.wait_mode(6);e.run(20)
+        journal=(ROOT/'assets/generated/journal.chr').read_bytes()
+        assert C.string_at(vram,len(journal))==journal,'Fourth-night journal artwork missing'
+        oam=C.string_at(e.memory+oam_address,544)
+        assert all(oam[n*4+1]==240 for n in range(128)),'Combat actor leaked onto the journal'
+        capture('journal-fourth-night')
+        e.tap(1);e.wait_mode(3);e.run(20)
+        assert C.string_at(vram,0xa000)==world_tiles,'Journal return damaged the world'
 
         previous = stamp()
         updates = max_gap = 0

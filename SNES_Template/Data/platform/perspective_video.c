@@ -54,8 +54,8 @@ static SkU8 old_cut = 255, old_lit = 255, old_phase = 255, phase;
 static SkU8 sky, old_sky = 255, previous_sky = 255, palette_sky = 255;
 static SkU8 published_sky = 255, published_lit = 255;
 static u8 *sky_palettes;
-static SkU16 camera_world_x, camera_world_y;
-static SkU8 lit, force_objects = 1, previous_facing = 255;
+SkU16 camera_world_x, camera_world_y;
+static SkU8 lit, force_objects = 1, previous_bow = 255;
 static SkS16 previous_x = -1, previous_y = -1;
 static SkS16 cull_left, cull_right;
 static SkS16 enemy_x_cache[COMBAT_ENEMIES], enemy_y_cache[COMBAT_ENEMIES];
@@ -73,6 +73,7 @@ SkU8 sprite_bands[11], sprite_band_limit;
 static SkU8 critical_plan[26];
 static SkS16 critical_x[26], critical_y[26];
 
+SkU8 perspective_project_object(const PerspectiveObject *object, SkS16 *sx, SkS16 *sy);
 void perspective_budget_reset(SkU16 limit);
 SkU8 perspective_lod(SkU16 kind, SkS16 bottom);
 SkU8 perspective_reserve(SkS16 top, SkS16 bottom, SkU16 cost);
@@ -318,7 +319,8 @@ void perspective_enter(const Game *g) {
 void perspective_leave(void) {
     setScreenOff();
     REG_HDMAEN = 0;
-    perspective_clear();
+    /* Dedicated Mode1 screens must not inherit combat sprites 64..77. */
+    oamClear(0, 0);
     hero_leave();
     npc_leave();
     torch_leave();
@@ -342,7 +344,7 @@ void perspective_leave(void) {
 void perspective_draw(const Game *g) {
     SkU8 i, count, kind, inserted = 0, objects_changed, level, budget, critical_index;
     SkU16 tile;
-    SkS16 sx, sy, player_y;
+    SkS16 sx, sy, player_y, object_y, far_actor_y, far_scenery_y;
     const PerspectiveObject *object;
     camera_world_x = PERSPECTIVE_ORIGIN + g->x;
     camera_world_y = PERSPECTIVE_ORIGIN + g->y;
@@ -355,7 +357,7 @@ void perspective_draw(const Game *g) {
     if (g->hurt_timer > 32) budget -= 2;
     hero_prepare(g, moving);
     npc_prepare(g);
-    objects_changed = force_objects || moving || sky != previous_sky || budget != previous_budget || g->bow_mode || projectiles_visible;
+    objects_changed = force_objects || moving || sky != previous_sky || budget != previous_budget || g->bow_mode != previous_bow || g->bow_mode || projectiles_visible;
     if (objects_changed) {
         perspective_clear();
         slots = 0;
@@ -364,10 +366,12 @@ void perspective_draw(const Game *g) {
         count = perspective_counts[g->room];
         object = perspective_objects[g->room];
         player_y = g->y;
+        far_actor_y = player_y - 112;
+        far_scenery_y = player_y - 180;
         /* Cover the union of every held/planted light position. Turning the
            torch changes only PPU windows, never scenery membership or LOD. */
-        cull_left = sky ? -32 : -8;
-        cull_right = sky ? 287 : 254;
+        cull_left = sky ? -32 : (g->room == 0 ? (g->bow_mode ? -8 : 2) : (g->bow_mode ? 8 : 18));
+        cull_right = sky ? 287 : (g->room == 0 ? (g->bow_mode ? 220 : 254) : (g->bow_mode ? 204 : 238));
         /* Allocate houses, then people, before optional clutter. Keep emission
            in depth order: allocation priority must not change occlusion. */
         for (i = 0; i < COMBAT_ARROWS; ++i) {
@@ -384,7 +388,7 @@ void perspective_draw(const Game *g) {
             object = perspective_objects[g->room] + i;
             kind = object->kind & 0x7f;
             if (object->y < player_y - (kind == 4 ? 180 : 112)) continue;
-            if (!perspective_project(g, object->x, object->y, &sx, &sy)) continue;
+            if (!perspective_project_object(object, &sx, &sy)) continue;
             if (sx < cull_left || sx > cull_right) continue;
             level = perspective_lod(kind, sy);
             critical_plan[i] = level;
@@ -393,30 +397,30 @@ void perspective_draw(const Game *g) {
         }
         object = perspective_objects[g->room];
         for (i = 0; i < count; ++i, ++object) {
-            if (!inserted && object->y < player_y) {
+            object_y = object->y;
+            if (!inserted && object_y < player_y) {
                 player();
                 inserted = 1;
             }
             kind = object->kind & 0x7f;
-            if (object->y < player_y - (kind == 1 || kind == 4 ? 180 : 112))
-                continue;
+            if (object_y < far_actor_y) {
+                if (kind != 1 && kind != 4) continue;
+                if (object_y < far_scenery_y) continue;
+            }
             if (kind == 0 || kind == 4) {
-                if (!critical_plan[i]) continue;
+                level = critical_plan[i];
+                if (!level) continue;
                 sx = critical_x[i];
                 sy = critical_y[i];
             } else {
-                if (!perspective_project(g, object->x, object->y, &sx, &sy)) continue;
+                if (!perspective_project_object(object, &sx, &sy)) continue;
                 if (sx < cull_left || sx > cull_right) continue;
-            }
-            if (kind == 0 || kind == 4)
-                level = critical_plan[i];
-            else {
                 level = perspective_lod(kind, sy);
             }
             if (!level) continue;
             --level;
-            tile = object->tile;
             if (kind == 0) {
+                tile = object->tile;
                 if (!level)
                     obj(slots++, sx - 8, sy - 16, 32 + (tile << 1), 0);
                 else {
@@ -430,14 +434,18 @@ void perspective_draw(const Game *g) {
                 else if (level == 1)
                     obj(slots++, sx - 16, sy - 32, 392 | 0x0600, 1);
                 else {
+                    /* The HUD starts at176. Do not emit cells that lie wholly
+                       below it; their visible silhouette is unchanged. */
+                    if (sy >= 240) continue;
                     obj(slots++, sx - 16, sy - 64, 384 | 0x0600, 1);
-                    obj(slots++, sx - 16, sy - 32, 388 | 0x0600, 1);
+                    if (sy < 208)
+                        obj(slots++, sx - 16, sy - 32, 388 | 0x0600, 1);
                 }
             } else if (kind == 3) {
                 if (!level)
                     obj(slots++, sx - 8, sy - 16, 488 | 0x0600, 0);
                 else
-                    obj(slots++, sx - 16, sy - 32, tile | 0x0600, 1);
+                    obj(slots++, sx - 16, sy - 32, object->tile | 0x0600, 1);
             } else if (kind == 4) {
                 if (!level)
                     obj(slots++, sx - 8, sy - 16, 450 | 0x0600, 0);
@@ -456,13 +464,13 @@ void perspective_draw(const Game *g) {
                     slots += 4;
                 }
             } else
-                obj(slots++, sx - 8, sy - 16, tile | 0x0600, 0);
+                obj(slots++, sx - 8, sy - 16, object->tile | 0x0600, 0);
         }
         if (!inserted)
             player();
         previous_x = g->x;
         previous_y = g->y;
-        previous_facing = phase >> 2;
+        previous_bow = g->bow_mode;
         previous_sky = sky;
         force_objects = 0;
     }

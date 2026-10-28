@@ -43,6 +43,7 @@ def run(core, pal=False):
                 e.run(70)
                 assert e.state()['day_seconds'] == before, 'World clock advanced behind UI'
                 if repeat == 0 and mode == 6:
+                    assert C.string_at(vram, (ROOT/'assets/generated/journal.chr').stat().st_size) == (ROOT/'assets/generated/journal.chr').read_bytes(), 'Journal artwork was replaced'
                     capture('journal')
                     e.tap(7); e.run(16)
                     assert e.state()['journal_page'] == 1, 'Full notes page did not open'
