@@ -56,6 +56,10 @@ jobs:
           core="$RUNNER_TEMP/snes9x/libretro/snes9x_libretro.so"
           python3 tests/rom_menu.py --core "$core"
           python3 tests/rom_menu.py --core "$core" --pal
+          python3 tests/rom_splash.py --core "$core"
+          python3 tests/rom_splash.py --core "$core" --pal
+          python3 tests/rom_hud.py --core "$core"
+          python3 tests/rom_hud.py --core "$core" --pal
           python3 tests/rom_story.py --core "$core"
           python3 tests/rom_story.py --core "$core" --pal
           python3 tests/rom_smoke.py --core "$core" --ending good

@@ -731,8 +731,8 @@ void video_draw(const Game *g, SkU8 scope) {
         meter(2, 7, bucket5[g->oil]);
         meter(18, 7, bucket5[g->fear]);
         text(2, 9, TXT_GOAL);
-        text_box(2, 10, game_goal(g), 28, 2);
-        text_box(2, 13, game_journal(g), 28, 4);
+        text_box(1, 10, game_goal(g), 30, 2);
+        text_box(1, 13, game_journal(g), 30, 4);
         rule(17);
         text(2, 18, TXT_ARROWS);
         number(12, 18, g->ammo);
