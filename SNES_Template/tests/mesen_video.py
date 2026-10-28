@@ -226,7 +226,8 @@ def run(mesen, frames=15000):
         with (ROOT/'build/mesen-video.log').open('w') as log:
             result = subprocess.run([str(mesen), '--testRunner', str(lua),
                                      str(ROOT/'chernorechye.sfc'), '--timeout=180',
-                                     '--Debug.ScriptWindow.AllowIoOsAccess=true'],
+                                     '--Debug.ScriptWindow.AllowIoOsAccess=true',
+                                     '--Snes.DisableFrameSkipping=true'],
                                     stdout=log, stderr=subprocess.STDOUT, timeout=200)
     assert output.exists(), 'Mesen did not export a report; see build/mesen-video.log'
     report = json.loads(output.read_text())
