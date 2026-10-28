@@ -188,7 +188,7 @@ def run(core, pal=False, allow_cadence_drops=False):
         capture('crawler-interrupted')
         e.tap(10)
         start_kills = e.state()['kills']
-        shots = 0
+        shots = interruptions = 0
         for _ in range(60):
             targets = alive()
             if not targets:
@@ -206,12 +206,25 @@ def run(core, pal=False, allow_cadence_drops=False):
                 e.run(10)
                 continue
             _, e.x, e.y = max(visible)
+            before_ammo = e.state()['ammo']
+            before_hurt = e.state()['hurt_timer']
             e.gun = {2}
-            e.wait_state(lambda s: s['shot_request'] or s['bow_draw'], 'Fourth-night Scope draw')
+            e.wait_state(lambda s: s['shot_request'] or s['bow_draw'] or s['hurt_timer'] > before_hurt,
+                         'Fourth-night Scope draw')
             e.gun = set()
             # Every second kill can recover an arrow in the same tick, so a
             # point-blank shot need not lower the final ammo counter.
-            e.wait_state(lambda s: s['bow_cooldown'] > 0, 'Fourth-night arrow', limit=60)
+            outcome = e.wait_state(lambda s: s['bow_cooldown'] > 0 or
+                                   (s['hurt_timer'] and not s['shot_request'] and not s['bow_draw']),
+                                   'Fourth-night arrow or interrupted draw', limit=60)
+            if not outcome['bow_cooldown']:
+                interruptions += 1
+                assert interruptions <= 8, ('Archer cannot recover from incoming attacks', outcome)
+                assert outcome['ammo'] >= before_ammo, 'An interrupted draw spent an arrow'
+                if not outcome['shove_cooldown']:
+                    e.tap(11)
+                e.run(12)
+                continue
             shots += 1
             e.run(28)
             assert e.state()['mode'] == 3
@@ -224,6 +237,7 @@ def run(core, pal=False, allow_cadence_drops=False):
                              'night clipping', 'live audio', 'crawler telegraph OAM',
                              'R interrupts crawler without ammo or damage', 'four projectile kills'],
                   'dusks': dusks, 'refills': refills, 'frames': e.frames, 'shots': shots,
+                  'interrupted_draws': interruptions,
                   'cadence': cadence, 'final_state': e.state()}
         (ROOT / 'build' / ('survival-regression-' + region + '.json')).write_text(
             json.dumps(report, indent=2)+'\n')

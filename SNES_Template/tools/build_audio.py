@@ -29,13 +29,18 @@ def main():
     chime=[int(9000*(math.sin(2*math.pi*420*i/2000)+.25*math.sin(2*math.pi*780*i/2000))*math.exp(-i/38)) for i in range(160)]
     bow=[int(11000*(.7*math.sin(2*math.pi*170*i/2000)+.3*rng.uniform(-1,1))*math.exp(-i/24)) for i in range(144)]
     impact=[int(10000*(math.sin(2*math.pi*(650*i/2000-950*(i/2000)**2))+.2*rng.uniform(-1,1))*math.exp(-i/30)) for i in range(160)]
+    attack=[int(8500*(.6*math.sin(2*math.pi*(95*i/2000+120*(i/2000)**2))+
+                            .4*rng.uniform(-1,1))*math.exp(-i/38)) for i in range(128)]
+    shove=[int(9500*rng.uniform(-1,1)*math.sin(math.pi*i/112)*math.exp(-i/46)) for i in range(112)]
+    hurt=[int(11000*(.6*math.sin(2*math.pi*72*i/2000)+.4*rng.uniform(-1,1))*math.exp(-i/27)) for i in range(144)]
     asm=['; Original generated BRR effects.','.include "hdr.asm"']
-    for name,samples in [('heartbeat',heartbeat),('latch',latch),('seal',seal),('chime',chime),('bow',bow),('impact',impact)]:
+    for name,samples in [('heartbeat',heartbeat),('latch',latch),('seal',seal),('chime',chime),
+                         ('bow',bow),('impact',impact),('attack',attack),('shove',shove),('hurt',hurt)]:
         (OUT/(name+'.brr')).write_bytes(encode_brr(samples))
         with wave.open(str(OUT/(name+'.wav')),'wb') as f:
-            f.setnchannels(1); f.setsampwidth(2); f.setframerate(2000 if name in ('heartbeat','chime','bow','impact') else rate)
+            f.setnchannels(1); f.setsampwidth(2); f.setframerate(rate if name in ('latch','seal') else 2000)
             f.writeframes(struct.pack('<%dh'%len(samples),*samples))
         asm+=['.section "sfx_%s" superfree'%name,name+'_sound:','.incbin "assets/generated/%s.brr"'%name,name+'_sound_end:','.ends']
     (ROOT/'Data/content/audio.asm').write_text('\n'.join(asm)+'\n')
-    print('Generated six original ambient and combat WAV/BRR effects')
+    print('Generated nine original ambient and combat WAV/BRR effects')
 if __name__=='__main__': main()

@@ -111,6 +111,7 @@ def build(out,assembly):
     assert len(status_maps)==512
     (out/'bow-status.map').write_bytes(status_maps)
     assembly+=['.section "bow_status_maps" superfree','bow_status_maps:',
-               '.incbin "assets/generated/bow-status.map"','.ends','']
+               '.incbin "assets/generated/bow-status.map"', 'bow_wait_tiles:',
+               '.dw '+','.join(str(ch|attributes) for ch in ' ЖДИ  '.encode('cp1251')),'.ends','']
     print('bow atlas',len(data),'ROM bytes, OBJ64..95, five arrow angles plus flips')
     print('bow HUD',len(maps),'ROM bytes, 50 ready-to-copy three-row panels')

@@ -24,15 +24,15 @@ def run(core,pal=False):
         assert tuple(scroll[i] for i in (1,4,7,10))==(state['x']>>4,state['x']>>3,state['x']>>2,state['x']>>2),('Parallax speeds',scroll,state)
         pixels=e.frame.crop((0,0,256,80))
         assert sum(1 for p in pixels.getdata() if p!=(0,0,0))>19000,'Empty horizon returned'
-    def resident(role,slot):
+    def resident(role,slot,expected=(0,1,2)):
         pointer=e.lib.retro_get_memory_data(3)+0xc000+8192+slot*1024
-        variants=[(ROOT/'assets/generated'/('npc-%s-%d.chr'%(role,n))).read_bytes() for n in range(3)]
+        variants=[(ROOT/'assets/generated'/('npc-%s-%d.chr'%(role,n))).read_bytes() for n in range(9)]
         observed=set()
         for _ in range(140):
             data=C.string_at(pointer,1024)
             assert data in variants,('Wrong resident stream',role)
             observed.add(variants.index(data));e.run(1)
-        assert observed=={0,1,2},('Resident never breathed/blinked',role,observed)
+        assert observed==set(expected),('Resident idle/facing frames',role,observed,expected)
         # Six small OBJ cells form a real 32x48 body at the projected feet.
         data=C.string_at(e.memory+e.symbols['oamMemory'],544)
         base_tile=256+slot*32
@@ -90,6 +90,9 @@ def run(core,pal=False):
         r.walk(56,164);capture('forest-ford')
         r.walk(176,130);capture('forest-path')
         r.walk(184,100);resident('miroslava',0);capture('forest-miroslava')
+        r.walk(156,76);e.run(12);resident('miroslava',0,(3,4));capture('miroslava-left')
+        r.walk(212,76);e.run(12);resident('miroslava',0,(5,6));capture('miroslava-right')
+        r.walk(184,52);e.run(12);resident('miroslava',0,(7,8));capture('miroslava-back')
         r.light()
         for _ in range(700):
             if e.state()['day_seconds']>=640:break
@@ -116,7 +119,8 @@ def run(core,pal=False):
         report={'region':region.upper(),'rom_sha256':hashlib.sha256((ROOT/'chernorechye.sfc').read_bytes()).hexdigest(),
                 'checks':['native scenery VRAM','village scale and courtyard','forest trail and ford',
                           'daylight','night circular darkness','unchanged quest route','full intro atlas restoration',
-                          'resident breathing and blink DMA','32x48 resident OBJ geometry including negative X',
+                          'reference-sheet resident sprites','resident breathing and blink DMA',
+                          'NPC turns left/right/back toward player','32x48 resident OBJ geometry including negative X',
                           'village/forest backdrop VRAM','three parallax scroll depths','populated daytime horizon'],
                 'frames':e.frames,'verified_scenery_quads':quads,'verified_residents':npcs}
         (ROOT/'build'/('locations-regression-'+region+'.json')).write_text(json.dumps(report,indent=2)+'\n')

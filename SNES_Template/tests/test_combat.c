@@ -52,11 +52,12 @@ static unsigned flying(const Game *g) {
 }
 
 static void test_layout(void) {
-    assert(sizeof(Game) == 152);
+    assert(sizeof(Game) == 154);
     assert(offsetof(Game, day_seconds) == 52);
     assert(offsetof(Game, nights) == 60);
     assert(offsetof(Game, enemies) == 76);
     assert(offsetof(Game, arrows) == 124);
+    assert(offsetof(Game, notice_ticks) == 148 && offsetof(Game, hit_stop) == 152);
     assert(sizeof(Enemy) == 12 && sizeof(Arrow) == 8);
 }
 
@@ -383,13 +384,13 @@ static void test_telegraphed_attack_and_dodge(void) {
     assert(hit.enemies[0].state == ENEMY_WINDUP && !hit.fear);
     dodge = hit;
     dodge.x += 48;
-    for (i = 0; i < 19; ++i) {
+    for (i = 0; i < 16; ++i) {
         combat_tick(&hit, &idle);
         combat_tick(&dodge, &idle);
         assert(!hit.fear && !dodge.fear);
     }
     assert(hit.enemies[0].state == ENEMY_WINDUP);
-    for (i = 0; i < 20; ++i) {
+    for (i = 0; i < 23; ++i) {
         combat_tick(&hit, &idle);
         combat_tick(&dodge, &idle);
     }
@@ -427,6 +428,7 @@ static void test_group_damage_and_interrupt(void) {
     assert(g.ammo == BOW_AMMO_MAX); /* Being hit cancels a held shot without spending ammo. */
     g.fear = 254;
     g.hurt_timer = 0;
+    combat_tick(&g, &idle);
     combat_tick(&g, &idle);
     assert(g.fear == 100); /* No byte wrap near a checkpoint. */
 }
@@ -541,6 +543,45 @@ static void test_combat_timers_freeze_and_light_interrupt(void) {
     assert(g.enemies[0].state == ENEMY_RECOVER && !g.fear);
 }
 
+static void test_footwork_and_impact_input(void) {
+    Game g;
+    SkS16 x, y;
+    SkInput shove_input = idle;
+    arena(&g, 2);
+    press(&g, SK_TURN_LEFT);
+    x = g.x; y = g.y;
+    ticks(&g, 20, SK_RIGHT);
+    assert(g.x == x + 10 && g.y == y && g.bow_mode);
+    x = g.x;
+    ticks(&g, 20, SK_ACTION | SK_LEFT);
+    assert(g.x == x && g.bow_draw == BOW_DRAW_TICKS);
+    assert(g.ammo == BOW_AMMO_MAX);
+    /* A three-tick impact pause must not swallow a fresh defensive input. */
+    g.hit_stop = 3;
+    shove_input.pressed = SK_SHOVE;
+    combat_tick(&g, &shove_input);
+    assert(g.shove_cooldown == SHOVE_COOLDOWN && g.hit_stop == 2);
+    assert(!g.bow_draw && g.ammo == BOW_AMMO_MAX);
+    g.mode = G_PAUSE;
+    combat_tick(&g, &idle);
+    assert(g.hit_stop == 2);
+}
+
+static void test_planted_torch_exposes_the_archer(void) {
+    Game g;
+    unsigned i;
+    SkInput held = idle;
+    arena(&g, 3);
+    g.ward_timer = 0;
+    g.bow_mode = 1;
+    g.enemies[0].kind = ENEMY_SHADE;
+    g.enemies[0].x = g.x; g.enemies[0].y = g.y - 24;
+    g.enemies[0].attack = g.enemies[0].step = 0;
+    held.held = SK_ACTION;
+    for (i = 0; i < 45; ++i) combat_tick(&g, &held);
+    assert(g.hurt_timer && g.fear == 4 && g.ammo == BOW_AMMO_MAX);
+}
+
 int main(void) {
     test_layout();
     test_nights_and_capacity();
@@ -559,6 +600,8 @@ int main(void) {
     test_shove_cone_cooldown_and_walls();
     test_arrow_stagger_and_precision();
     test_combat_timers_freeze_and_light_interrupt();
+    test_footwork_and_impact_input();
+    test_planted_torch_exposes_the_archer();
     puts("PASS: bow precision, stagger, telegraphs, dodge, shove, group protection, nights, Scope, pause and NPC safety");
     return 0;
 }

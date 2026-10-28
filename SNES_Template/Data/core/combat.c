@@ -70,6 +70,7 @@ void combat_enter(Game *g) {
     g->bow_mode = g->bow_draw = g->bow_cooldown = g->shot_request = 0;
     g->combat_notice = g->combat_notice_ticks = 0;
     g->hurt_timer = g->shove_cooldown = 0;
+    g->hit_stop = g->enemy_clock = 0;
     g->enemy_active = count != 0;
     for (i = 0; i < count; ++i) spawn(g, i);
 }
@@ -131,7 +132,8 @@ static void assist_aim(Game *g) {
         cross = dx * arrow_dy[g->bow_direction] - dy * arrow_dx[g->bow_direction];
         if (magnitude(cross) > (distance << 2)) continue;
         forward = dx * arrow_dx[g->bow_direction] + dy * arrow_dy[g->bow_direction];
-        if (forward <= 0 || !game_visible(g, enemy->x, enemy->y)) continue;
+        if (forward <= 0) continue;
+        if (!game_visible(g, enemy->x, enemy->y)) continue;
         best = distance;
         g->aim_x = enemy->x; g->aim_y = enemy->y;
     }
@@ -244,6 +246,7 @@ static void projectiles(Game *g) {
                 if (!enemy->hp) continue;
                 if (magnitude(x - enemy->x) + magnitude(y - enemy->y) > 12) continue;
                 enemy->hit = 12;
+                g->hit_stop = 3;
                 if (enemy->hp > arrow->damage) {
                     enemy->hp -= arrow->damage;
                     stagger(g, enemy, arrow->dx, arrow->dy, 4);
@@ -264,8 +267,8 @@ static void projectiles(Game *g) {
     }
 }
 static void enemies(Game *g) {
-    SkU8 i, count, tier, interval;
-    SkS16 dx, dy, nx, ny;
+    SkU8 i, count, tier, interval, can_attack;
+    SkS16 dx, dy, nx, ny, distance;
     Enemy *enemy = g->enemies;
     if (g->room == 2) {
         g->enemy_active = g->enemy_slots = 0;
@@ -280,7 +283,7 @@ static void enemies(Game *g) {
         return;
     }
     tier = combat_tier(g);
-    count = g->room == 2 ? 0 : (g->room == 0 ? tier : tier + 1);
+    count = g->room == 0 ? tier : tier + 1;
     g->enemy_slots = count;
     interval = 8 - tier;
     if (!count) {
@@ -289,19 +292,27 @@ static void enemies(Game *g) {
         g->enemy_active = 0;
         return;
     }
+    /* Actors render at 30 Hz in dense scenes. Updating their AI every other
+       logical tick avoids doing two full actor passes before the same PPU
+       frame; counters and motion consume two ticks to retain real timing. */
+    if (g->enemy_clock) { g->enemy_clock = 0; return; }
+    g->enemy_clock = 1;
     g->enemy_active = 0;
     for (i = 0; i < count; ++i, ++enemy) {
         if (!enemy->hp) {
-            if (enemy->hit) --enemy->hit;
-            if (enemy->respawn) { --enemy->respawn; continue; }
+            if (enemy->hit) enemy->hit = enemy->hit > 2 ? enemy->hit - 2 : 0;
+            if (enemy->respawn) {
+                enemy->respawn = enemy->respawn > 2 ? enemy->respawn - 2 : 0;
+                continue;
+            }
             spawn(g, i);
         }
         g->enemy_active = 1;
-        if (enemy->attack) --enemy->attack;
-        if (enemy->hit) { --enemy->hit; continue; }
+        if (enemy->attack) enemy->attack = enemy->attack > 2 ? enemy->attack - 2 : 0;
+        if (enemy->hit) { enemy->hit = enemy->hit > 2 ? enemy->hit - 2 : 0; continue; }
         if (g->ward_timer) continue;
         if (enemy->state == ENEMY_WINDUP) {
-            if (!enemy->kind && light_sees(g, enemy->x, enemy->y)) {
+            if (!enemy->kind && !g->bow_mode && light_sees(g, enemy->x, enemy->y)) {
                 enemy->state = ENEMY_RECOVER;
                 enemy->attack = 20;
                 enemy->step = 0;
@@ -320,7 +331,12 @@ static void enemies(Game *g) {
                 enemy->step = 0;
                 continue;
             }
-            displace(g, enemy, step_x[enemy->step], step_y[enemy->step], 1);
+            /* A two-unit stride cannot cross any authored solid rectangle.
+               Test one endpoint per axis instead of four terrain calls. */
+            nx = (SkS16)step_x[enemy->step] * 2;
+            ny = (SkS16)step_y[enemy->step] * 2;
+            if (nx && game_can_walk(g->room, enemy->x + nx, enemy->y)) enemy->x += nx;
+            if (ny && game_can_walk(g->room, enemy->x, enemy->y + ny)) enemy->y += ny;
             dx = g->x - enemy->x; dy = g->y - enemy->y;
             if (!g->hurt_timer && magnitude(dx) + magnitude(dy) < 14) {
                 g->fear = g->fear > 100 - (4 + tier * 2) ? 100 : g->fear + 4 + tier * 2;
@@ -337,29 +353,41 @@ static void enemies(Game *g) {
             enemy->state = ENEMY_HUNT;
             enemy->step = 0;
         }
-        if (++enemy->step < interval) continue;
-        enemy->step = 0;
+        enemy->step += 2;
+        if (enemy->step < interval) continue;
+        enemy->step -= interval;
         dx = g->x - enemy->x; dy = g->y - enemy->y;
+        distance = magnitude(dx) + magnitude(dy);
         nx = (dx > 0) - (dx < 0); ny = (dy > 0) - (dy < 0);
         /* Fire protects the immediate pool; enemies can gather at its edge. */
-        if (magnitude(dx) + magnitude(dy) < 32 && light_sees(g, enemy->x, enemy->y)) {
+        if (distance < (g->bow_mode ? 20 : 32) && light_sees(g, enemy->x, enemy->y)) {
             if (!enemy->kind) { nx = -nx; ny = -ny; }
             else if (g->tick & 16) continue; /* Crawlers push through, slowly. */
         }
-        if (!enemy->attack && magnitude(dx) + magnitude(dy) < 26 &&
-            (enemy->kind || !light_sees(g, enemy->x, enemy->y))) {
-            enemy->state = ENEMY_WINDUP;
-            enemy->attack = enemy->kind == ENEMY_CRAWLER ? 30 : 20;
-            enemy->step = light_direction(dx, dy);
-            continue;
+        /* Keep the call out of an OR expression: 816-tcc miscompiles the
+           crawler's true branch of (kind || !light_sees(...)). */
+        if (!enemy->attack) {
+            if (distance < 26) {
+                can_attack = enemy->kind;
+                /* A planted torch leaves the archer exposed. The carried
+                   flame still repels a shade during normal exploration. */
+                if (g->bow_mode) can_attack = 1;
+                if (!can_attack) can_attack = !light_sees(g, enemy->x, enemy->y);
+                if (can_attack) {
+                    enemy->state = ENEMY_WINDUP;
+                    enemy->attack = enemy->kind == ENEMY_CRAWLER ? 30 : 20;
+                    enemy->step = light_direction(dx, dy);
+                    continue;
+                }
+            }
         }
         /* Separate approach lanes keep a pair from becoming one silhouette. */
-        if (magnitude(dx) + magnitude(dy) > 40 && i) {
+        if (distance > 40 && i) {
             dx += i & 1 ? -10 : 10;
             nx = (dx > 0) - (dx < 0);
         }
-        if (game_can_walk(g->room, enemy->x + nx, enemy->y)) enemy->x += nx;
-        if (game_can_walk(g->room, enemy->x, enemy->y + ny)) enemy->y += ny;
+        if (nx && game_can_walk(g->room, enemy->x + nx, enemy->y)) enemy->x += nx;
+        if (ny && game_can_walk(g->room, enemy->x, enemy->y + ny)) enemy->y += ny;
     }
     g->enemy_x = g->enemies[0].x;
     g->enemy_y = g->enemies[0].y;
@@ -372,8 +400,11 @@ void combat_tick(Game *g, const SkInput *in) {
     if (g->shove_cooldown) --g->shove_cooldown;
     if (in->pressed & SK_SHOVE) shove(g);
     if (g->bow_mode || (in->pressed & SK_TURN_LEFT)) bow_input(g, in);
+    /* Input remains live during impact emphasis; only moving combat actors
+       pause, so a fresh R/L edge or a released string is never swallowed. */
+    if (g->hit_stop) { --g->hit_stop; return; }
     if (g->arrows[0].life || g->arrows[1].life || g->arrows[2].life) projectiles(g);
-    enemies(g);
+    if (!g->hit_stop) enemies(g);
 }
 SkU8 combat_pick(const Game *g, SkS16 sx, SkS16 sy, SkS16 *x, SkS16 *y) {
     SkU8 i, facing = (g->direction >> 1) & 3;

@@ -16,7 +16,7 @@ extern u8 cine1_tiles, cine1_tiles_end, cine1_map, cine1_palette;
 extern u8 cine2_tiles, cine2_tiles_end, cine2_map, cine2_palette;
 extern u8 sprite_tiles, sprite_tiles_end, sprite_palette, bg_palette, font_tiles, font_tiles_end;
 extern u8 daycycle_notices;
-extern u8 bow_hud_maps, bow_status_maps;
+extern u8 bow_hud_maps, bow_status_maps, bow_wait_tiles;
 static SkU8 bow_status_cache = 255;
 extern u8 interaction0_maps, interaction1_maps, interaction2_maps, interaction3_maps;
 extern u8 interaction_notice_maps;
@@ -410,10 +410,13 @@ void video_draw(const Game *g, SkU8 scope) {
             (g->time_notice ? g->time_phase : (g->bow_mode ? 32 + g->ammo + (scope ? 25 : 0) :
             (g->focus != SK_NONE ? 96 + (g->room << 4) + g->focus : 254)));
         bow_status = 0;
-        if (g->bow_mode) bow_status = !g->ammo ? 7 : (g->hurt_timer > 32 ? 6 :
+        if (g->bow_mode) {
+            bow_status = !g->ammo ? 7 : (g->hurt_timer > 32 ? 6 :
             (g->shove_cooldown > SHOVE_COOLDOWN - 12 ? 5 : (g->bow_cooldown ? 4 :
             (g->bow_draw >= BOW_DRAW_TICKS ? 3 : (g->bow_draw >= 12 ? 2 :
             (g->bow_draw >= BOW_MIN_DRAW ? 1 : 0))))));
+            if (g->shove_cooldown) bow_status |= 128;
+        }
         if (i != time_banner || (g->bow_mode && i >= 32 && i < 82 && bow_status != bow_status_cache)) {
             banner_dirty = !dirty && time_banner != 255;
             /* Only entry from a full-screen menu needs a full clear. Live
@@ -432,7 +435,9 @@ void video_draw(const Game *g, SkU8 scope) {
                 memcpy(text_map + 25 * 32, &daycycle_notices + (SkU16)g->time_phase * 192, 3 * 64);
             else if (g->bow_mode) {
                 memcpy(text_map + 25 * 32, &bow_hud_maps + (SkU16)(i - 32) * 192, 3 * 64);
-                memcpy(text_map + 25 * 32, &bow_status_maps + ((SkU16)bow_status << 6), 64);
+                memcpy(text_map + 25 * 32, &bow_status_maps + ((SkU16)(bow_status & 7) << 6), 64);
+                if (g->ammo && g->shove_cooldown)
+                    memcpy(text_map + 26 * 32 + (scope ? 24 : 22), &bow_wait_tiles, 12);
             }
             bow_status_cache = bow_status;
         }

@@ -371,14 +371,26 @@ def build(out, assembly):
         frames.append(view.resize((384,144),Image.Resampling.NEAREST))
     frames[0].save(out/'hero-walk.gif',save_all=True,append_images=frames[1:],
                    duration=100,loop=0,transparency=0,disposal=2)
-    bow_sheet = canvas((128,192))
+    bow_sheet = canvas((256,192))
     for direction, facing in enumerate(FACING):
         assembly += ['.section "hero_bow_%s" superfree' % facing]
-        for pose in range(4):
-            im = bow_actor(facing,pose)
+        for pose in range(8):
+            im = bow_actor(facing,min(pose,3) if pose < 4 else (3 if pose==6 else 0))
+            if pose in (4,5):
+                walk=actor(facing,2 if pose==4 else 5,with_hands=False)
+                im.paste(walk.crop((0,35,32,48)),(0,35))
+            elif pose in (6,7):
+                # The feet stay planted while shoulders drive the shove or
+                # recoil from a blow. All displacement is integer pixels.
+                upper=im.crop((0,0,32,35))
+                im.paste(0,(0,0,32,35))
+                amount=2 if pose==6 else -2
+                dx=amount if facing=='right' else (-amount if facing=='left' else 0)
+                dy=amount if facing=='front' else (-amount if facing=='back' else 0)
+                im.paste(upper,(dx,dy),upper.point(lambda p:255 if p else 0,'L'))
             name = 'bow-hero-%s-%d.chr' % (facing,pose)
             (out/name).write_bytes(frame_strip(im))
-            assembly += ['hero_bow_frame%d:' % (direction*4+pose),
+            assembly += ['hero_bow_frame%d:' % (direction*8+pose),
                          '.incbin "assets/generated/%s"' % name]
             bow_sheet.paste(im,(pose*32,direction*48))
         assembly += ['.ends','']
@@ -392,7 +404,7 @@ def build(out, assembly):
     bow_frames[0].save(out/'hero-bow.gif',save_all=True,append_images=bow_frames[1:],
                        duration=120,loop=0,transparency=0,disposal=2)
     print('hero', len(FACING)*8, 'frames, 32768 ROM bytes, 1024 streamed OBJ bytes')
-    print('hero bow',16,'frames, 16384 ROM bytes; original walk frames unchanged')
+    print('hero bow',32,'frames, 32768 ROM bytes; draw, footwork, shove and recoil')
 
 
 if __name__ == '__main__':

@@ -185,33 +185,25 @@ static void choose(Game *g) {
 }
 /* Solid geometry remains solid in darkness. Rectangle positions match maps. */
 SkU8 game_can_walk(SkU8 room, SkS16 x, SkS16 y) {
-    SkRect obstacle;
     if (x < 12 || x > 244 || y < 32 || y > 180)
         return 0;
+    /* The same authored rectangles, without constructing a temporary SkRect
+       and calling through a far pointer for every footstep/arrow substep. */
     if (room == 0) {
-        obstacle.x = 14;
-        obstacle.y = 30;
-        obstacle.w = 70;
-        obstacle.h = 33;
-        if (sk_contains(&obstacle, x, y))
-            return 0;
-        obstacle.x = 157;
-        obstacle.y = 30;
-        obstacle.w = 78;
-        obstacle.h = 38;
-    } else if (room == 2) {
-        obstacle.x = 101;
-        obstacle.y = 29;
-        obstacle.w = 55;
-        obstacle.h = 24;
-    } else {
-        obstacle.x = 106;
-        obstacle.y = 28;
-        obstacle.w = 46;
-        obstacle.h = 20;
+        if (y < 63 && x >= 14 && x < 84) return 0;
+        if (y < 68 && x >= 157 && x < 235) return 0;
+        return 1;
     }
-    return !sk_contains(&obstacle, x, y);
+    if (room == 2) {
+        if (y >= 53) return 1;
+        if (x < 101) return 1;
+        return x >= 156;
+    }
+    if (y >= 48) return 1;
+    if (x < 106) return 1;
+    return x >= 152;
 }
+
 #ifndef SNES_TARGET
 SkU8 game_nearby(const Game *g) {
     SkU8 i, best = SK_NONE, count = game_hotspot_count(g->room);
@@ -739,6 +731,14 @@ void game_tick(Game *g, const SkInput *in) {
         silver_ward(g);
     if (!g->bow_mode && !(in->pressed & SK_TURN_LEFT))
         move_player(g, in);
+    else if (g->bow_mode && !(g->tick & 1) && !g->bow_draw && !g->shot_request &&
+             g->bow_cooldown <= 16 && !(in->held & SK_ACTION) && !in->fire &&
+             (in->held & (SK_LEFT | SK_RIGHT | SK_UP | SK_DOWN))) {
+        /* Lower the string to take careful half-speed steps. Holding A
+           anchors the feet and turns the same pad directions into aim. */
+        move_player(g, in);
+        g->bow_direction = g->direction << 1;
+    }
     tick_environment(g);
     combat_tick(g, in);
     if (g->fear >= 96 && g->mode == G_EXPLORE)

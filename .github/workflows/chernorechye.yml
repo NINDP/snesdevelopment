@@ -30,7 +30,7 @@ jobs:
           python3 tools/build_audio.py
           make -f Makefile.host test
           make -f Makefile.host sanitize
-          python3 -m unittest discover -s tests -p 'test_build.py'
+          python3 -m unittest discover -s tests -p 'test_*.py'
           python3 -m py_compile tools/*.py tests/*.py
           sh -n tools/get_sdk.sh
       - name: Build verified SNES ROM

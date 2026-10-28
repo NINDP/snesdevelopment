@@ -289,7 +289,7 @@ static void test_clock_and_text(void) {
             assert(strlen(line->text) <= 154);
             assert(strlen(line->text) == line->length);
         }
-    assert(sizeof(Game) == 152);
+    assert(sizeof(Game) == 154);
 }
 
 static void test_optional_systems(void) {

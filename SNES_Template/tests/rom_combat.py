@@ -49,7 +49,7 @@ def run(core, pal=False):
         e.run(120)
         after = e.state()
         for field in ('arrows', 'enemies', 'ammo', 'bow_draw', 'bow_cooldown',
-                      'day_seconds', 'nights', 'kills', 'hurt_timer', 'shove_cooldown'):
+                      'day_seconds', 'nights', 'kills', 'hurt_timer', 'shove_cooldown', 'hit_stop'):
             assert after[field] == before[field], ('Combat advanced on pause', field, before, after)
 
     try:
@@ -62,6 +62,12 @@ def run(core, pal=False):
         e.tap(10)
         assert e.state()['bow_mode']
         capture('ready')
+        before_step = e.state()['x']
+        e.buttons = {7}
+        e.run(24)
+        e.buttons = set()
+        assert 6 <= e.state()['x'] - before_step <= 18, 'Lowered bow footwork did not use half speed'
+        capture('footwork')
         position = (e.state()['x'], e.state()['y'])
         e.buttons = {8, 7}
         e.run(3)  # Fewer than six logical ticks in both PAL and NTSC.
@@ -100,6 +106,10 @@ def run(core, pal=False):
         e.wait_mode(3)
         e.run(90)
         assert e.state()['ammo'] == 23 and not any(a['life'] for a in e.state()['arrows'])
+        capture('shove-ready-again')
+        waiting, available = [np.asarray(dict(shots)[name])[208:216,176:240]
+                              for name in ('shove', 'shove-ready-again')]
+        assert np.count_nonzero(np.any(waiting != available, axis=2)) > 8, 'R cooldown was not visible in HUD'
         e.tap(10)
         assert not e.state()['bow_mode']
         r.inspect(2)
@@ -177,7 +187,7 @@ def run(core, pal=False):
         report = {'region': region.upper(),
                   'rom_sha256': json.loads((ROOT / 'build/link_manifest.json').read_text())['rom_sha256'],
                   'checks': ['cancelled draw', 'stationary bow aim', 'half/full/release poses',
-                             'charge meter', 'R shove', 'pad arrow', 'projectile and shove pause',
+                             'lowered bow footwork', 'charge meter', 'R shove', 'pad arrow', 'projectile and shove pause',
                              'quiver refill', 'first night creature',
                              'planted torch darkness', 'offscreen Scope rejected',
                              'Scope torso hit', 'projectile kill', 'delayed respawn'],

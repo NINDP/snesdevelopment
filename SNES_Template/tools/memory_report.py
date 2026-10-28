@@ -38,7 +38,7 @@ def report():
         entries = re.findall(r'^\s*(\S+) dsb (\d+)\s*$', path.read_text(), re.M)
         allocations[str(path.relative_to(ROOT))] = sum(int(n) for _, n in entries)
         sizes.update({name.split('{WLA_FILENAME}_')[-1]: int(n) for name, n in entries})
-    expected = {'text_map': 1792, 'tables': 266, 'heat_tables': 266, 'game': 152}
+    expected = {'text_map': 1792, 'tables': 266, 'heat_tables': 266, 'game': 154}
     for name, size in expected.items():
         if sizes.get(name) != size:
             raise ValueError('Unexpected buffer/state size: ' + name)
@@ -125,8 +125,8 @@ def report():
         raise ValueError('Hero palette must contain 16 colors')
     npc_frames=list(assets.glob('npc-*.chr'))
     npc_addresses=re.findall(r'^([0-9a-fA-F]{8}) npc_frame\d+$',symbols,re.M)
-    if len(npc_frames)!=15 or any(p.stat().st_size!=1024 for p in npc_frames) or len(npc_addresses)!=15:
-        raise ValueError('Expected five residents with three authored idle frames')
+    if len(npc_frames)!=45 or any(p.stat().st_size!=1024 for p in npc_frames) or len(npc_addresses)!=45:
+        raise ValueError('Expected five residents with nine reference-sheet frames')
     if any((int(addr,16)&0x7fff)>32768-1024 for addr in npc_addresses):
         raise ValueError('NPC frame DMA crosses a LoROM bank')
     if (assets/'npc.pal').stat().st_size!=32:
@@ -136,8 +136,8 @@ def report():
         raise ValueError('Hero frame DMA must not cross a LoROM bank boundary')
     bow_frames=list(assets.glob('bow-hero-*.chr'))
     bow_addresses=re.findall(r'^([0-9a-fA-F]{8}) hero_bow_frame\d+$',symbols,re.M)
-    if len(bow_frames)!=16 or any(p.stat().st_size!=1024 for p in bow_frames) or len(bow_addresses)!=16:
-        raise ValueError('Expected sixteen two-handed bow frames')
+    if len(bow_frames)!=32 or any(p.stat().st_size!=1024 for p in bow_frames) or len(bow_addresses)!=32:
+        raise ValueError('Expected thirty-two bow, footwork, shove and recoil frames')
     if any((int(addr,16)&0x7fff)>32768-1024 for addr in bow_addresses):
         raise ValueError('Bow hero frame crosses a LoROM bank')
     for name in ('torch.chr','torch-oam.bin'):
@@ -148,7 +148,7 @@ def report():
     if (assets/'torch-planted-oam.bin').stat().st_size!=1024:
         raise ValueError('Expected thirty-two planted torch poses')
     for name,size in (('torch_tiles',4096),('torch_oam_frames',5120),
-                      ('bow_tiles',1024),('bow_hud_maps',9600),('bow_status_maps',512)):
+                      ('bow_tiles',1024),('bow_hud_maps',9600),('bow_status_maps',512),('bow_wait_tiles',12)):
         match=re.search(r'^([0-9a-fA-F]{8}) '+name+'$',symbols,re.M)
         if not match or (int(match[1],16)&0x7fff)>32768-size:
             raise ValueError('Torch DMA/animation data crosses a LoROM bank: '+name)
@@ -218,10 +218,10 @@ def report():
               'interaction_rom_bytes': interaction_bytes,
               'fastrom': True, 'ambient_map_bytes': 2048, 'font_bytes': font,
               'sprite_bytes': sprites, 'hero_frame_bytes': 1024, 'hero_rom_bytes': 32768,
-              'npc_rom_bytes': 15360, 'npc_obj_bytes': 2048,
+              'npc_rom_bytes': 46080, 'npc_obj_bytes': 2048,
               'torch_obj_bytes': 4096, 'torch_oam_rom_bytes': 4096,
               'planted_torch_oam_rom_bytes': 1024,
-              'bow_frame_rom_bytes': 16384, 'bow_obj_bytes': 1024, 'bow_hud_rom_bytes': 10112,
+              'bow_frame_rom_bytes': 32768, 'bow_obj_bytes': 1024, 'bow_hud_rom_bytes': 10124,
               'scenery_obj_bytes': 8192, 'scenery_rom_bytes': scenery_bytes,
               'backdrop_vram_bytes': 8192, 'backdrop_rom_bytes': backdrop_bytes+544,
               'brr_payload_bytes': samples,

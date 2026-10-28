@@ -130,6 +130,7 @@ typedef struct {
     Arrow arrows[COMBAT_ARROWS];
     SkU8 notice_ticks, focus;
     SkU8 hurt_timer, shove_cooldown;
+    SkU8 hit_stop, enemy_clock;
 } Game;
 #define TORCH_RADIUS 64
 #define CORRIDOR_START 80

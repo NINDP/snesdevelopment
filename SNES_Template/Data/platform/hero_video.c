@@ -18,6 +18,10 @@ HERO_BOW_FRAMES(0) HERO_BOW_FRAMES(1) HERO_BOW_FRAMES(2) HERO_BOW_FRAMES(3)
 HERO_BOW_FRAMES(4) HERO_BOW_FRAMES(5) HERO_BOW_FRAMES(6) HERO_BOW_FRAMES(7)
 HERO_BOW_FRAMES(8) HERO_BOW_FRAMES(9) HERO_BOW_FRAMES(10) HERO_BOW_FRAMES(11)
 HERO_BOW_FRAMES(12) HERO_BOW_FRAMES(13) HERO_BOW_FRAMES(14) HERO_BOW_FRAMES(15)
+HERO_BOW_FRAMES(16) HERO_BOW_FRAMES(17) HERO_BOW_FRAMES(18) HERO_BOW_FRAMES(19)
+HERO_BOW_FRAMES(20) HERO_BOW_FRAMES(21) HERO_BOW_FRAMES(22) HERO_BOW_FRAMES(23)
+HERO_BOW_FRAMES(24) HERO_BOW_FRAMES(25) HERO_BOW_FRAMES(26) HERO_BOW_FRAMES(27)
+HERO_BOW_FRAMES(28) HERO_BOW_FRAMES(29) HERO_BOW_FRAMES(30) HERO_BOW_FRAMES(31)
 /* Flat table stays in ROM and indexes with shifts, without software multiply. */
 static u8 *const frame_data[HERO_FRAME_COUNT + HERO_BOW_FRAME_COUNT] = {
     &hero_frame0, &hero_frame1, &hero_frame2, &hero_frame3,
@@ -31,7 +35,11 @@ static u8 *const frame_data[HERO_FRAME_COUNT + HERO_BOW_FRAME_COUNT] = {
     &hero_bow_frame0, &hero_bow_frame1, &hero_bow_frame2, &hero_bow_frame3,
     &hero_bow_frame4, &hero_bow_frame5, &hero_bow_frame6, &hero_bow_frame7,
     &hero_bow_frame8, &hero_bow_frame9, &hero_bow_frame10, &hero_bow_frame11,
-    &hero_bow_frame12, &hero_bow_frame13, &hero_bow_frame14, &hero_bow_frame15};
+    &hero_bow_frame12, &hero_bow_frame13, &hero_bow_frame14, &hero_bow_frame15,
+    &hero_bow_frame16, &hero_bow_frame17, &hero_bow_frame18, &hero_bow_frame19,
+    &hero_bow_frame20, &hero_bow_frame21, &hero_bow_frame22, &hero_bow_frame23,
+    &hero_bow_frame24, &hero_bow_frame25, &hero_bow_frame26, &hero_bow_frame27,
+    &hero_bow_frame28, &hero_bow_frame29, &hero_bow_frame30, &hero_bow_frame31};
 static SkU8 selected_frame = 255, pending_frame = 255;
 static SkU8 gait_frame = 2, gait_ticks = 0;
 static SkU16 animation_tick = 0;
@@ -58,12 +66,15 @@ void hero_prepare(const Game *g, SkU8 moving) {
     if (g->bow_mode) {
         /* A stationary two-handed stance: the off hand braces the grip,
            the shooting hand follows the string, then moves away on loose. */
-        gait_frame = 2;
-        gait_ticks = 0;
         frame = g->bow_draw >= 12 ? 2 : (g->bow_draw >= 6 ? 1 : 0);
+        if (moving) gait_ticks = 8;
+        else gait_ticks = gait_ticks > elapsed ? gait_ticks - elapsed : 0;
+        if (gait_ticks && !g->bow_draw) frame = 4 + ((g->tick >> 3) & 1);
         if (g->bow_cooldown > 16)
             frame = 3;
-        frame += HERO_FRAME_COUNT + (facing << 2);
+        if (g->shove_cooldown > SHOVE_COOLDOWN - 12) frame = 6;
+        if (g->hurt_timer > 32) frame = 7;
+        frame += HERO_FRAME_COUNT + (facing << 3);
     } else if (moving) {
         gait_ticks += elapsed;
         if (gait_ticks >= 6) {
