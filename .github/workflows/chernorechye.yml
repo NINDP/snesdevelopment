@@ -20,13 +20,14 @@ jobs:
       - name: Dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y fonts-dejavu-core zlib1g-dev
+          sudo apt-get install -y fonts-dejavu-core zlib1g-dev libsndfile1 ffmpeg
           python3 -m pip install -r SNES_Template/requirements.txt
       - name: Generate and test the portable core
         working-directory: SNES_Template
         run: |
           python3 tools/build_content.py
           python3 tools/build_assets.py
+          sh tools/get_sdk.sh
           python3 tools/build_audio.py
           make -f Makefile.host test
           make -f Makefile.host sanitize
@@ -63,6 +64,7 @@ jobs:
         working-directory: SNES_Template
         run: |
           core="$RUNNER_TEMP/snes9x/libretro/snes9x_libretro.so"
+          python3 tests/rom_audio.py --core "$core"
           python3 tests/rom_ambush.py --core "$core"
           python3 tests/rom_ambush.py --core "$core" --pal
           python3 tests/rom_menu.py --core "$core"

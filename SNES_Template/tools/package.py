@@ -7,7 +7,7 @@ ROOT=Path(__file__).resolve().parents[1]
 def main():
     dist=ROOT/'dist';dist.mkdir(exist_ok=True)
     rom=(ROOT/'chernorechye.sfc').read_bytes()
-    assert len(rom)==1048576
+    assert len(rom)==2097152
     complement,checksum=struct.unpack_from('<HH',rom,0x7fdc)
     assert complement^checksum==0xffff
     assert sum(rom)&0xffff==checksum
@@ -61,7 +61,7 @@ def main():
                 or (r.get('heartbeat_expected',True) and r['audio_peak']<=0) for r in report['cadence']):
             raise ValueError('Cadence/audio regression failed: '+suffix)
     lines=['# Проверка финальной сборки','',
-        'PVSnesLib 4.6.0; Linux x86-64; 1 MiB LoROM.',
+        'PVSnesLib 4.6.0; Linux x86-64; 2 MiB LoROM.',
         'Mode 7: тайловые материалы четырёх локаций и круговой свет факела.',
         'SHA-256: `'+hashlib.sha256(rom).hexdigest()+'`.','',
         'Тесты ядра и ASan/UBSan проходят. Настоящая ROM проверена',
@@ -116,7 +116,7 @@ def main():
         'Панорама занимает свободные 8 KiB VRAM, не расходуя OBJ; ночью фон выключен.','',
         'Физическая SNES, настоящий Super Scope/CRT, macOS и пользовательская',
         'длительность прохождения не проверены. Это прототип с',
-        'новой графикой и девятью эффектами, без озвучки, полной музыки и SRAM.']
+        'новой графикой, 84 эффектами, окружением и музыкой SPC/MSU-1, без полной озвучки и SRAM.']
     memory=json.loads((ROOT/'build/memory.json').read_text())
     lines+=['', 'Статика платформы/ядра: %d B; initialized content: %d B.'%
             (memory['project_static_bytes'],memory['initialized_content_bytes']),
@@ -170,7 +170,8 @@ def main():
             if '__pycache__' in rel.parts:continue
             if rel.parts[0]=='build' and p.suffix not in {'.png','.json','.gif'}:continue
             if p.suffix=='.asm' and rel.as_posix() not in {
-                    'Data/content/assets.asm','Data/content/audio.asm','Data/perspective_oam.asm'}:continue
+                    'Data/content/assets.asm','Data/content/audio.asm','Data/perspective_oam.asm',
+                    'Data/audio_boot.asm','Data/audio/spc700.asm'}:continue
             z.write(p,'SNES_Template/'+rel.as_posix())
     with zipfile.ZipFile(archive) as z:
         assert z.testzip() is None

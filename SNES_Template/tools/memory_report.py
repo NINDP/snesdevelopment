@@ -219,7 +219,11 @@ def report():
         if len(payload)!=size or not match or (int(match[1],16)&0x7fff)>32768-size:
             raise ValueError('Interaction panel must fit one LoROM bank: '+filename)
         interaction_bytes+=size
-    samples = sum(p.stat().st_size for p in assets.glob('*.brr'))
+    audio = json.loads((assets/'audio/manifest.json').read_text())
+    sample_files = list((assets/'audio').glob('*.brr'))
+    samples = sum(p.stat().st_size for p in sample_files)
+    if len(sample_files)!=84 or any(p.stat().st_size>audio['stream_region_bytes'] for p in sample_files):
+        raise ValueError('Audio effects exceed the native stream budget')
     ambush_bytes = {}
     for filename, symbol, limit in (
             ('ambush-ground.vram', 'ambush_ground_vram', 32768),
@@ -240,8 +244,6 @@ def report():
     if any((int(addr,16)&0x7fff)>32768-2048 for addr in fox_addresses):
         raise ValueError('Streamed fox pose crosses a LoROM bank')
     ambush_bytes['fox_poses']=64*2048
-    if samples > 4096:
-        raise ValueError('BRR payload exceeds the allocated 4 KiB sample region')
     if (ROOT / 'chernorechye.sfc').read_bytes()[0x7fd5] != 0x30:
         raise ValueError('ROM must use FastROM addressing')
     result = {'project_static_bytes': total, 'project_static_limit': 3072,
@@ -265,6 +267,9 @@ def report():
               'scenery_obj_bytes': 8192, 'scenery_rom_bytes': scenery_bytes,
               'backdrop_vram_bytes': 8192, 'backdrop_rom_bytes': backdrop_bytes+544,
               'brr_payload_bytes': samples,
+              'audio_soundbank_bytes': audio['native_bank_bytes'],
+              'audio_resident_slots': audio['resident_slots'],
+              'audio_stream_region_bytes': audio['stream_region_bytes'],
               'vram_actual_peak_bytes': max(32768 + 8192, max(backgrounds.values()) + 4096,
                                              max(size + (4096 if name == 'cine0.chr' else 2048)
                                                  for name, size in cinematics.items())) + font + 2048 + sprites,

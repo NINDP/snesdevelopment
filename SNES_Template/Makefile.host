@@ -1,6 +1,6 @@
 CC ?= cc
 CFLAGS := -std=c99 -O2 -Wall -Wextra -Werror -IData/include
-CORE := Data/core/sneskit.c Data/core/game.c Data/core/light.c Data/core/daycycle.c Data/core/combat.c Data/core/ambush.c Data/core/perspective.c Data/content/perspective.c Data/content/story.c Data/content/beam.c
+CORE := Data/core/audio_events.c Data/core/sneskit.c Data/core/game.c Data/core/light.c Data/core/daycycle.c Data/core/combat.c Data/core/ambush.c Data/core/perspective.c Data/content/perspective.c Data/content/story.c Data/content/beam.c
 .PHONY: test combat sanitize
 build:
 	mkdir -p build
@@ -10,12 +10,15 @@ build/test_combat: tests/test_combat.c $(CORE) Data/include/game.h | build
 	$(CC) $(CFLAGS) $(CORE) $< -o $@
 build/test_ambush: tests/test_ambush.c $(CORE) Data/include/game.h | build
 	$(CC) $(CFLAGS) $(CORE) $< -o $@
+build/test_audio: tests/test_audio.c $(CORE) Data/include/audio.h Data/include/audio_ids.h | build
+	$(CC) $(CFLAGS) $(CORE) $< -o $@
 combat: build/test_combat
 	./build/test_combat
-test: build/test_core build/test_combat build/test_ambush
+test: build/test_core build/test_combat build/test_ambush build/test_audio
 	./build/test_core
 	./build/test_combat
 	./build/test_ambush
+	./build/test_audio
 sanitize: | build
 	$(CC) $(CFLAGS) -O1 -g -fsanitize=address,undefined $(CORE) tests/test_core.c -o build/test_sanitize
 	ASAN_OPTIONS=detect_leaks=0 ./build/test_sanitize

@@ -69,6 +69,7 @@ class Runner:
         assert before['mode']==3 and before['lamp'] and before['oil'],before
         self.capture(name)
         self.e.gun_tap(3,128,112) if self.scope else self.e.tap(9)
+        self.e.wait_state(lambda s:not s['lamp'],'Torch input after room audio load')
         assert not self.e.state()['lamp'],self.e.state()
         self.capture(name+'-lamp-off')
         self.e.tap(1);self.e.wait_mode(6)
@@ -123,6 +124,7 @@ class Runner:
     def light(self):
         if not self.e.state()['lamp']:
             self.e.gun_tap(3,128,112) if self.scope else self.e.tap(9)
+            self.e.wait_state(lambda s:s['lamp']==1,'Torch input')
         assert self.e.state()['lamp']==1
     def axis(self,field,target):
         for _ in range(600):

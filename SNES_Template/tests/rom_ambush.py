@@ -48,7 +48,9 @@ def run(core,pal=False):
         r=enter(e)
         frame('intro')
         before=e.state()
-        e.run(30);e.gun_tap(2,128,112)
+        e.wait_state(lambda s:s['ambush_timer']==0,'Ambush intro and audio bank ready')
+        e.gun_tap(2,128,112)
+        e.wait_state(lambda s:s['ambush_phase']==1,'Start ambush')
         assert e.state()['ambush_phase']==1
         first=frame('ready')
         def hero_visible(pixels,x):
