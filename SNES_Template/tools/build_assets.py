@@ -728,6 +728,8 @@ def main():
     build_backdrop(OUT,assembly)
     from build_scenery import build as build_scenery
     build_scenery(OUT,assembly,sheet,npc_far)
+    from build_chapel import build as build_chapel
+    build_chapel(OUT,assembly)
     torch=sheet.crop((0,80,128,96))
     rgba=torch.convert('RGBA')
     mask=Image.new('L',torch.size)

@@ -1,5 +1,6 @@
 #include <string.h>
 #include "../include/game.h"
+#include "../include/audio.h"
 
 static const SkU8 lanes[8] = {42,210,84,174,58,196,112,150};
 static const SkU8 wave_end[3] = {3,7,12};
@@ -35,6 +36,7 @@ static void step_x(Enemy *fox, SkS16 target, SkU8 speed) {
 void ambush_begin(Game *g) {
     memset(g->enemies, 0, sizeof(g->enemies));
     memset(g->arrows, 0, sizeof(g->arrows));
+    sound_reset();
     g->mode = G_AMBUSH;
     g->x = g->destination_x = 128;
     g->y = g->destination_y = AMBUSH_PLAYER_Y;
@@ -74,6 +76,7 @@ static void release_shot(Game *g) {
         arrow->dx=(SkS8)(dx*40/longest);
         arrow->dy=(SkS8)(dy*40/longest);
         arrow->life=32;arrow->damage=1;
+        sound_emit(S_BOW_RELEASE_STRONG);
         g->bow_cooldown=11;
         g->shot_request=0;
         return;
@@ -99,6 +102,8 @@ static void arrows(Game *g) {
                 width=ambush_fox_width(fox->y);height=(width*3)>>2;
                 if (absolute(x-fox->x)>width/2+2) continue;
                 if (y<fox->y-height-2 || y>fox->y+2) continue;
+                sound_emit(sound_variant(S_FOX_HURT_01,2));
+                sound_schedule(S_FOX_DISSOLVE,10);
                 fox->hp=0;fox->hit=22;
                 arrow->life=0;
                 ++g->ambush_defeated;++g->kills;
@@ -146,6 +151,7 @@ static void pack(Game *g) {
         if(fox->state==FOX_WINDUP) {
             if(fox->attack)--fox->attack;
             else {
+                sound_emit(S_FOX_CHARGE);
                 fox->state=FOX_CHARGE;
                 fox->attack=(SkU8)((absolute((SkS16)fox->respawn-fox->x)+28)/29);
                 if(fox->attack==0)fox->attack=1;
@@ -156,6 +162,7 @@ static void pack(Game *g) {
             step_x(fox,(SkS16)fox->respawn,2);
             if(fox->attack)--fox->attack;
             else {
+                sound_emit(sound_variant(S_FOX_WARNING_01,2));
                 fox->state=FOX_WINDUP;
                 fox->respawn=g->x;
                 fox->attack=38;
@@ -167,8 +174,10 @@ static void pack(Game *g) {
             step_x(fox,(SkS16)fox->respawn,fox->attack);
             if(fox->y>=198) {
                 if(absolute(fox->x-g->x)<27 && g->hurt_timer==0) {
+                    sound_emit(sound_variant(S_PLAYER_HURT_01,2));
                     --g->ambush_health;g->hurt_timer=60;
                 }
+                sound_emit(S_FOX_RETREAT);
                 fox->state=FOX_RETREAT;
                 fox->respawn=fox->x<128?24:232;
                 fox->attack=0;
@@ -189,6 +198,7 @@ static void pack(Game *g) {
                 fox->respawn=clamp_x(fox->x+(fox->x<128?30:-30));
                 fox->attack=20;
             } else {
+                sound_emit(sound_variant(S_FOX_WARNING_01,2));
                 fox->state=FOX_WINDUP;
                 fox->respawn=g->x;
                 fox->attack=46-g->ambush_wave*4;
@@ -207,6 +217,7 @@ SkU8 ambush_tick(Game *g,const SkInput *in) {
         if(advance==0)return 0;
         if(g->ambush_phase==AMBUSH_CLEAR) { g->ambush_done=1;return 1; }
         if(g->ambush_phase==AMBUSH_FAILED)ambush_begin(g);
+        sound_emit(S_WAVE_START);
         g->ambush_phase=AMBUSH_ACTIVE;g->ambush_timer=60;return 0;
     }
     ++g->ambush_clock;
@@ -216,7 +227,7 @@ SkU8 ambush_tick(Game *g,const SkInput *in) {
     movement(g,in,valid);
     if(g->ambush_phase==AMBUSH_BREATHER) {
         if(g->ambush_timer)--g->ambush_timer;
-        else { g->ambush_phase=AMBUSH_ACTIVE;g->ambush_spawned=0;g->ambush_timer=35; }
+        else { sound_emit(S_WAVE_START);g->ambush_phase=AMBUSH_ACTIVE;g->ambush_spawned=0;g->ambush_timer=35; }
         return 0;
     }
     if(valid && in->fire)queue_shot(g,in->x,in->y);
@@ -250,12 +261,12 @@ SkU8 ambush_tick(Game *g,const SkInput *in) {
         }
     }
     arrows(g);pack(g);
-    if(g->ambush_health==0) { g->ambush_phase=AMBUSH_FAILED;g->ambush_timer=35;g->shot_request=0; }
+    if(g->ambush_health==0) { sound_emit(S_PLAYER_DEFEAT); g->ambush_phase=AMBUSH_FAILED;g->ambush_timer=35;g->shot_request=0; }
     else if(g->ambush_defeated>=wave_end[g->ambush_wave]) {
         g->shot_request=0;
         memset(g->arrows,0,sizeof(g->arrows));
-        if(++g->ambush_wave>=3) { g->ambush_phase=AMBUSH_CLEAR;g->ambush_timer=35; }
-        else { g->ambush_phase=AMBUSH_BREATHER;g->ambush_timer=115; }
+        if(++g->ambush_wave>=3) { sound_emit(S_WAVE_CLEAR_COMPLETE);g->ambush_phase=AMBUSH_CLEAR;g->ambush_timer=35; }
+        else { sound_emit(S_WAVE_CLEAR_SHORT);g->ambush_phase=AMBUSH_BREATHER;g->ambush_timer=115; }
     }
     return 0;
 }

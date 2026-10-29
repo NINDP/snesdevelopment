@@ -10,6 +10,7 @@ extern u8 daylight0_palettes, daylight1_palettes, daylight_actor_palettes;
 extern u8 perspective_sky_brightness;
 extern u8 bow_tiles, sprite_tiles;
 extern u8 scenery_tiles, scenery_low_tiles, scenery_compact_tiles;
+extern u8 chapel_scenery_tiles, chapel_compact_tiles;
 extern u8 daylight_scenery_palettes;
 extern u8 npc_palette;
 extern u8 backdrop0_tiles, backdrop0_map, backdrop1_tiles, backdrop1_map, backdrop_palettes;
@@ -259,8 +260,10 @@ void perspective_enter(const Game *g) {
     torch_enter();
     dmaCopyVram(&bow_tiles, VIDEO_OBJ_TILES + 1024, BOW_TILE_BYTES);
     dmaCopyVram(&scenery_low_tiles, VIDEO_OBJ_TILES + 512, 1024);
-    dmaCopyVram(&scenery_compact_tiles, VIDEO_OBJ_TILES + 3584, 1024);
-    dmaCopyVram(&scenery_tiles, VIDEO_OBJ_TILES + 5120, 6144);
+    dmaCopyVram(room == 2 ? &chapel_compact_tiles : &scenery_compact_tiles,
+                VIDEO_OBJ_TILES + 3584, 1024);
+    dmaCopyVram(room == 2 ? &chapel_scenery_tiles : &scenery_tiles,
+                VIDEO_OBJ_TILES + 5120, 6144);
     if (room < 2) {
         dmaCopyVram(room ? &backdrop1_tiles : &backdrop0_tiles, 0x4000, 6144);
         dmaCopyVram(room ? &backdrop1_map : &backdrop0_map, 0x4c00, 2048);
@@ -407,7 +410,7 @@ void perspective_draw(const Game *g) {
             }
             kind = object->kind & 0x7f;
             if (object_y < far_actor_y) {
-                if (kind != 1 && kind != 4) continue;
+                if (kind != 1 && kind != 4 && kind != 6) continue;
                 if (object_y < far_scenery_y) continue;
             }
             if (kind == 0 || kind == 4) {
@@ -445,6 +448,17 @@ void perspective_draw(const Game *g) {
                     obj(slots++, sx - 16, sy - 64, 384 | 0x0600, 1);
                     if (sy < 208)
                         obj(slots++, sx - 16, sy - 32, 388 | 0x0600, 1);
+                }
+            } else if (kind == 6) {
+                /* Upright timber columns share world-space feet with the
+                   Mode 7 foundation; two cells preserve their 32x64 height. */
+                if (!level)
+                    obj(slots++, sx - 8, sy - 16, 450 | 0x0600, 0);
+                else if (level == 1)
+                    obj(slots++, sx - 16, sy - 32, 392 | 0x0600, 1);
+                else {
+                    obj(slots++, sx - 16, sy - 64, object->tile | 0x0600, 1);
+                    obj(slots++, sx - 16, sy - 32, (object->tile + 8) | 0x0600, 1);
                 }
             } else if (kind == 3) {
                 if (!level)

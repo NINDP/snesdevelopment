@@ -3,14 +3,14 @@ $(error Set PVSNESLIB_HOME to PVSnesLib 4.6.0, or run sh tools/get_sdk.sh)
 endif
 export ROMNAME := chernorechye
 export ROMTITLE := NABLA CHERNORECHYE
-export ROMBANKS := 32
-export ROMSIZE := 0A
+export ROMBANKS := 64
+export ROMSIZE := 0B
 export COUNTRY := 01
 export FASTROM := 1
 export SRC := Data
 # Explicit manifest: legacy demo states/music and compiler .asm are not linked.
 override CFILES := main.c Data/gameState.c $(wildcard Data/core/*.c) $(wildcard Data/platform/*.c) $(wildcard Data/content/*.c)
-override SFILES := Data/content/assets.asm Data/content/audio.asm Data/perspective_oam.asm
+override SFILES := Data/content/assets.asm Data/content/audio.asm Data/audio_boot.asm Data/perspective_oam.asm
 include $(PVSNESLIB_HOME)/devkitsnes/snes_rules
 CFLAGS += -DSNES_TARGET
 export OFILES := $(sort $(CFILES:.c=.obj) $(SFILES:.asm=.obj))

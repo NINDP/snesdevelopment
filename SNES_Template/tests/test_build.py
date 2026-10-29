@@ -22,7 +22,7 @@ class PlayableExportTests(unittest.TestCase):
             root=Path(temp)
             for directory in ('build','docs','dist'):
                 (root/directory).mkdir()
-            rom=bytearray(1048576)
+            rom=bytearray(2097152)
             checksum=510
             struct.pack_into('<HH',rom,0x7fdc,checksum^65535,checksum)
             digest=hashlib.sha256(rom).hexdigest()
@@ -84,7 +84,7 @@ class LinkFailureTests(unittest.TestCase):
         fake = self.root / 'fake-linker'
         fake.write_text('#!/usr/bin/env python3\nimport sys\nfrom pathlib import Path\nPath(sys.argv[-1]).write_bytes(b"bad ROM")\n')
         fake.chmod(0o755)
-        with self.assertRaisesRegex(ValueError, '1 MiB'):
+        with self.assertRaisesRegex(ValueError, '2 MiB'):
             link_rom.link(fake, self.sdk, self.output, [self.obj])
         self.assertEqual(self.output.read_bytes(), b'previous verified ROM')
 

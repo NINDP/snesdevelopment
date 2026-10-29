@@ -10,6 +10,8 @@ build/test_combat: tests/test_combat.c $(CORE) Data/include/game.h | build
 	$(CC) $(CFLAGS) $(CORE) $< -o $@
 build/test_ambush: tests/test_ambush.c $(CORE) Data/include/game.h | build
 	$(CC) $(CFLAGS) $(CORE) $< -o $@
+build/test_audio: tests/test_audio.c $(CORE) Data/include/audio.h Data/include/audio_ids.h | build
+	$(CC) $(CFLAGS) $(CORE) $< -o $@
 combat: build/test_combat
 	./build/test_combat
 build/test_roach: tests/test_roach.c $(CORE) Data/include/game.h | build

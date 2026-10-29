@@ -1,6 +1,7 @@
 #include <string.h>
 #include "../include/game.h"
 #include "../include/ui_text.h"
+#include "../include/audio.h"
 #define HAS(g, f) (((g)->flags & (f)) == (f))
 static SkS16 distance(SkS16 a, SkS16 b) {
     return a > b ? a - b : b - a;
@@ -8,6 +9,7 @@ static SkS16 distance(SkS16 a, SkS16 b) {
 static void begin_dialogue(Game *g, SkU8 id) {
     g->mode = G_DIALOGUE;
     g->dialogue = id;
+    sound_story(id, 0);
     g->page = 0;
     g->revealed = 0;
     g->text_delay = 0;
@@ -40,6 +42,7 @@ static void enter_room(Game *g, SkU8 room) {
     combat_enter(g);
 }
 void game_init(Game *g) {
+    sound_reset();
     memset(g, 0, sizeof(*g));
     daycycle_init(g);
     combat_init(g);
@@ -140,12 +143,15 @@ static void finish_dialogue(Game *g) {
         begin_choice(g, C_FINAL);
         break;
     case D_GRAVE:
+        if (!(g->evidence & 1)) sound_emit(S_EVIDENCE_ADDED);
         g->evidence |= 1;
         break;
     case D_WITNESS:
+        if (!(g->evidence & 2)) sound_emit(S_EVIDENCE_ADDED);
         g->evidence |= 2;
         break;
     case D_MARK:
+        if (!(g->evidence & 4)) sound_emit(S_EVIDENCE_ADDED);
         g->evidence |= 4;
         break;
     case D_ECHO_HOME:
@@ -279,6 +285,7 @@ static SkU8 scope_nearby(const Game *g, const SkInput *in) {
     return best;
 }
 static void refill(Game *g) {
+    sound_emit(S_SUPPLIES_REFILL);
     g->oil = 120;
     g->ammo = BOW_AMMO_MAX;
     g->notice = 1;
@@ -315,6 +322,7 @@ static void silver_ward(Game *g) {
         return;
     }
     --g->wards;
+    sound_emit(S_SILVER_FLASH);
     g->ward_timer = 90;
     g->notice = 8;
     g->fear = g->fear > 25 ? g->fear - 25 : 0;
@@ -369,6 +377,7 @@ static void interact(Game *g, SkU8 id) {
             }
             if (HAS(g, F_FOREST)) { g->notice = 12; return; }
             if (id - 2 == g->forest_step) {
+                sound_emit(g->forest_step==0?S_MAGIC_TOUCH_MEMORY:(g->forest_step==1?S_MAGIC_TOUCH_NAME:S_MAGIC_TOUCH_LIGHT));
                 ++g->forest_step;
                 g->notice = g->forest_step == 1 ? 13 : 14;
             } else {
@@ -445,6 +454,8 @@ static void interact(Game *g, SkU8 id) {
             g->notice = 5;
         if (id >= 2 && id <= 4) {
             if (g->charge[id - 2] >= 60) {
+                if (!(g->rune_mask & (1 << (id - 2))))
+                    sound_emit(id==2?S_MAGIC_TOUCH_MEMORY:(id==3?S_MAGIC_TOUCH_NAME:S_MAGIC_TOUCH_LIGHT));
                 g->rune_mask |= 1 << (id - 2);
                 g->notice = 15;
             } else
@@ -562,6 +573,7 @@ static void tick_environment(Game *g) {
             h = game_hotspot(3, i + 2);
             if (light_sees(g, h->x, h->y) && distance(g->x, h->x) + distance(g->y, h->y) > 12 &&
                 !(g->rune_mask & (1 << i))) {
+                if (!g->charge[i]) sound_emit(S_NODE_CHARGE);
                 if (g->charge[i] < 60)
                     ++g->charge[i];
             } else if (!(g->rune_mask & (1 << i)) && g->charge[i])
@@ -583,7 +595,7 @@ static void tick_environment(Game *g) {
             g->fear = g->fear > 98 ? 100 : g->fear + 2;
     }
 }
-void game_tick(Game *g, const SkInput *in) {
+static void game_tick_logic(Game *g, const SkInput *in) {
     SkU8 advance = (in->pressed & SK_ACTION) ||
                    (in->scope && in->fire && in->aim_valid && !in->offscreen);
     SkU16 length;
@@ -702,6 +714,7 @@ void game_tick(Game *g, const SkInput *in) {
                 g->revealed = (SkU8)length;
             else {
                 ++g->page;
+                if (g->page < story_pages(g->dialogue)) sound_story(g->dialogue, g->page);
                 g->revealed = 0;
                 g->text_delay = 0;
                 if (g->dialogue == D_PROLOG && g->page == 1) {
@@ -741,6 +754,7 @@ void game_tick(Game *g, const SkInput *in) {
             return;
         }
         if (advance) {
+            sound_emit(g->option==0?S_BELL_LEFT:(g->option==1?S_BELL_MIDDLE:S_BELL_RIGHT));
             wanted = 0;
             if (g->bell_step == 1)
                 wanted = 2;
@@ -771,8 +785,10 @@ void game_tick(Game *g, const SkInput *in) {
             return;
         }
         if (advance) {
-            if (g->option == g->chapel_step)
+            if (g->option == g->chapel_step) {
+                sound_emit(g->option==0?S_MAGIC_TOUCH_MEMORY:(g->option==1?S_MAGIC_TOUCH_NAME:S_MAGIC_TOUCH_LIGHT));
                 ++g->chapel_step;
+            }
             else {
                 g->chapel_step = 0;
                 g->notice = 6;
@@ -832,6 +848,37 @@ void game_tick(Game *g, const SkInput *in) {
             if (nearby == SK_NONE) return;
         }
         interact(g, nearby);
+    }
+}
+void game_tick(Game *g, const SkInput *in) {
+    SkU8 mode=g->mode, option=g->option, page=g->journal_page;
+    SkU8 lit=g->lamp && g->oil, oil=g->oil, time=g->time_phase;
+    SkS16 x=g->x,y=g->y;
+    SkU8 advance=(in->pressed & SK_ACTION) || (in->scope && in->fire && in->aim_valid && !in->offscreen);
+    game_tick_logic(g,in);
+    if (g->mode==mode && option!=g->option &&
+        (mode==G_MENU || mode==G_CHOICE || mode==G_BELL || mode==G_PUZZLE || mode==G_PAUSE)) sound_emit(S_UI_MOVE);
+    if (advance && mode!=G_EXPLORE && mode!=G_AMBUSH && mode!=G_CORRIDOR && mode!=G_BELL && mode!=G_PUZZLE) sound_emit(S_UI_CONFIRM);
+    if (g->mode==G_JOURNAL && mode!=G_JOURNAL) sound_emit(S_JOURNAL_HANDLE_OPEN);
+    if (mode==G_JOURNAL && g->mode!=G_JOURNAL) sound_emit(S_JOURNAL_HANDLE_CLOSE);
+    if (mode==G_JOURNAL && page!=g->journal_page) sound_emit(S_JOURNAL_PAGE);
+    if (mode!=G_JOURNAL && (in->pressed & SK_BACK) && mode!=G_EXPLORE) sound_emit(S_UI_CANCEL);
+    if (g->mode==G_PAUSE && mode!=G_PAUSE) sound_emit(S_UI_CANCEL);
+    if (mode==G_EXPLORE && lit!=(g->lamp && g->oil)) sound_emit(g->lamp && g->oil?S_TORCH_TOGGLE_ON:S_TORCH_TOGGLE_OFF);
+    if (g->mode==G_EXPLORE && mode==G_EXPLORE && time!=g->time_phase) sound_emit(S_BOW_READY);
+    if (g->mode==mode && (mode==G_EXPLORE || mode==G_CORRIDOR || mode==G_AMBUSH ||
+        (mode==G_DIALOGUE && g->dialogue==D_PROLOG && g->page==0)) && (x!=g->x || y!=g->y))
+        sound_walk(sound_material(g), mode==G_CORRIDOR?2:1);
+    if (g->mode==G_EXPLORE && mode==G_EXPLORE &&
+        (advance || (in->pressed & SK_BACK)) &&
+        (g->notice==2 || g->notice==3 || g->notice==4 || g->notice==5 || g->notice==6 ||
+         g->notice==7 || g->notice==9 || g->notice==10 || g->notice==18 || g->notice>=19)) sound_emit(S_UI_ERROR);
+    if (mode==G_BELL && advance && g->notice==11) sound_emit(S_UI_ERROR);
+    if (mode==G_PUZZLE && advance && g->notice==6) sound_emit(S_UI_ERROR);
+    if (g->mode==G_EXPLORE && !g->pulse && g->seconds && g->oil==oil) {
+        if (!(g->seconds & 1) && (game_daylight(g)<8 || g->fear>60)) sound_emit(S_PLAYER_HEARTBEAT);
+        if (g->room==3 && g->seconds%3==0) sound_emit(S_BLACK_HEART_PULSE);
+        if (g->seconds%17==0 && x==g->x && y==g->y) sound_emit(g->room==3?S_WATER_DRIP:(g->room==2?S_WOOD_CREAK:(game_daylight(g)>=8?S_BIRD_CALL:S_WOOD_CREAK)));
     }
 }
 const char *game_goal(const Game *g) {

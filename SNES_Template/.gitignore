@@ -20,3 +20,5 @@ Data/content/*.c
 Data/content/*.asm
 Data/include/ui_text.h
 assets/generated/
+/chernorechye.msu
+/chernorechye-*.pcm

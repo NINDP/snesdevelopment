@@ -317,6 +317,8 @@ lod_bottom_ready:
     beq lod_npc
     cmp #1
     beq lod_tree
+    cmp #6
+    beq lod_wall
     cmp #4
     beq lod_house
     cmp #3
@@ -340,6 +342,12 @@ lod_tree:
     lda.b tcc__r4h
     cmp #105
     bmi lod_try
+    bra lod_tall
+lod_wall:
+    lda.b tcc__r4h
+    cmp #98
+    bmi lod_try
+lod_tall:
     cmp #126
     bmi lod_32
     lda #2
