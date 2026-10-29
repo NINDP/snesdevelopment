@@ -334,6 +334,28 @@ def build_ground(room):
         d.rectangle((240, 32, 255, 223), fill=255)
         overlay(im, 'foundation', mask)
         d = ImageDraw.Draw(im)
+        # A raised sanctuary, worn central runner, woven borders and a timber
+        # threshold. All marks lie flat; upright walls live in the OBJ atlas.
+        d.rectangle((104,32,151,55),fill=18)
+        for y in (35,43,51):
+            d.line((105,y,150,y),fill=21)
+            d.line((105,y+1,150,y+1),fill=16)
+        d.line((104,55,151,55),fill=22)
+        d.line((104,56,151,56),fill=17)
+        for x in (112,140):
+            d.line((x,72,x,143),fill=35)
+            for y in range(76,140,8):
+                d.line((x+1,y,x+2,y+1,x+1,y+2),fill=34)
+        for y in (84,108,132):
+            d.line((124,y,128,y-4,132,y,128,y+4,124,y),fill=34)
+            d.point((128,y),fill=35)
+        d.rectangle((16,176,239,183),fill=17)
+        d.line((16,176,239,176),fill=21)
+        d.line((16,183,239,183),fill=16)
+        # Hearth-like stone pads under the two candlestands and the bells.
+        for x,y in ((80,78),(176,78),(172,144)):
+            d.rectangle((x-8,y-4,x+7,y+3),fill=23)
+            d.line((x-7,y-3,x+5,y-3),fill=25)
         # Worn threshold and descending dark stair treads at the cellar exit.
         d.rectangle((216, 160, 239, 183), fill=16)
         for y in range(162, 184, 4):

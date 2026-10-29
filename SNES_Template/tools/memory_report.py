@@ -187,6 +187,8 @@ def report():
     for filename,symbol,size in (('scenery.chr','scenery_tiles',6144),
             ('scenery-low.chr','scenery_low_tiles',1024),
             ('scenery-compact.chr','scenery_compact_tiles',1024),
+            ('chapel-scenery.chr','chapel_scenery_tiles',6144),
+            ('chapel-compact.chr','chapel_compact_tiles',1024),
             ('daylight-scenery.pal','daylight_scenery_palettes',544)):
         match=re.search(r'^([0-9a-fA-F]{8}) '+symbol+'$',symbols,re.M)
         if (assets/filename).stat().st_size!=size or not match or (int(match[1],16)&0x7fff)>32768-size:

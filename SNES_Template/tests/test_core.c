@@ -329,6 +329,15 @@ static void test_scope_billboard(void) {
     assert(perspective_pick(&g, 112, 158, &sx, &sy));
     assert(wx == sx && wy == sy);
     assert(game_can_walk(g.room, wx, wy));
+    /* The bell rack is a 32px body. Scope must select its upper frame,
+       including points outside the old 16px icon's horizontal bounds. */
+    g.room = 2;
+    g.x = 172;
+    g.y = 166;
+    g.direction = 0;
+    assert(perspective_project(&g, 172, 144, &sx, &sy));
+    assert(perspective_pick_target(&g, sx + 12, sy - 24, &wx, &wy));
+    assert(wx == 172 && wy == 144);
 }
 static void test_journal_pages(void) {
     Game g;

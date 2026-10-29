@@ -107,6 +107,8 @@ jobs:
           python3 tests/rom_interaction.py --core "$core" --pal
           python3 tests/rom_locations.py --core "$core"
           python3 tests/rom_locations.py --core "$core" --pal
+          python3 tests/rom_chapel.py --core "$core"
+          python3 tests/rom_chapel.py --core "$core" --pal
       - name: Package source, ROM and reports
         working-directory: SNES_Template
         run: python3 tools/package.py

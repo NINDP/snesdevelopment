@@ -46,7 +46,8 @@ SkU8 perspective_pick_target(const Game *g, SkS16 sx, SkS16 sy, SkS16 *x, SkS16 
                 half = 16;
                 height = 48;
             }
-            if ((object->kind == 1 && oy >= 134) || (object->kind == 3 && oy >= 140)) {
+            if ((object->kind == 1 && oy >= 134) ||
+                ((object->kind == 3 || object->kind == 5) && oy >= 140)) {
                 half = 16;
                 height = 32;
             }
