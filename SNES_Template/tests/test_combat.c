@@ -52,12 +52,13 @@ static unsigned flying(const Game *g) {
 }
 
 static void test_layout(void) {
-    assert(sizeof(Game) == 164);
+    assert(sizeof(Game) == 176);
     assert(offsetof(Game, day_seconds) == 52);
     assert(offsetof(Game, nights) == 60);
     assert(offsetof(Game, enemies) == 76);
     assert(offsetof(Game, arrows) == 124);
     assert(offsetof(Game, notice_ticks) == 148 && offsetof(Game, hit_stop) == 152);
+    assert(offsetof(Game, roach_phase) == 164);
     assert(sizeof(Enemy) == 12 && sizeof(Arrow) == 8);
 }
 

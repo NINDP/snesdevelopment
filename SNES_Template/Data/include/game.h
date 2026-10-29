@@ -15,7 +15,8 @@ enum GameMode {
     G_CREDITS,
     G_BELL,
     G_CORRIDOR,
-    G_AMBUSH
+    G_AMBUSH,
+    G_ROACH
 };
 enum StoryFlag {
     F_HEAD = 1,
@@ -100,6 +101,9 @@ enum EnemyKind { ENEMY_SHADE, ENEMY_CRAWLER };
 enum EnemyState { ENEMY_HUNT, ENEMY_WINDUP, ENEMY_LUNGE, ENEMY_RECOVER };
 enum AmbushPhase { AMBUSH_INTRO, AMBUSH_ACTIVE, AMBUSH_CLEAR, AMBUSH_FAILED, AMBUSH_BREATHER };
 enum FoxState { FOX_STALK, FOX_WINDUP, FOX_CHARGE, FOX_RETREAT, FOX_FEINT };
+enum RoachPhase { ROACH_INTRO, ROACH_ACTIVE, ROACH_WON, ROACH_LOST };
+#define ROACH_TOTAL 10
+#define ROACH_MAX_MISSES 4
 #define AMBUSH_FOX_COUNT 12
 #define AMBUSH_PLAYER_Y 202
 typedef struct {
@@ -149,6 +153,9 @@ typedef struct {
     SkU8 ambush_done, ambush_phase, ambush_wave, ambush_spawned;
     SkU8 ambush_defeated, ambush_health, ambush_aim_ticks, ambush_timer;
     SkU16 ambush_clock;
+    SkU8 roach_phase, roach_round, roach_hits, roach_misses;
+    SkU8 roach_hole, roach_cursor, roach_timer, roach_gap, roach_flash;
+    SkU16 roach_seed;
 } Game;
 #define TORCH_RADIUS 64
 #define CORRIDOR_START 80
@@ -185,6 +192,10 @@ void combat_tick(Game *g, const SkInput *in);
 void combat_ward(Game *g);
 void ambush_begin(Game *g);
 SkU8 ambush_tick(Game *g, const SkInput *in);
+void roach_begin(Game *g);
+void roach_tick(Game *g, const SkInput *in);
+SkS16 roach_x(SkU8 hole);
+SkS16 roach_y(SkU8 hole);
 SkU8 ambush_fox_lod(SkS16 y);
 SkU8 ambush_fox_width(SkS16 y);
 SkU8 combat_capacity(const Game *g);

@@ -579,11 +579,9 @@ static void tick_environment(Game *g) {
         } else if (game_daylight(g) >= 8) {
             if (g->fear)
                 --g->fear;
-        } else if (g->fear < 98)
-            g->fear += 2;
+        } else if (g->fear < 100)
+            g->fear = g->fear > 98 ? 100 : g->fear + 2;
     }
-    if (g->fear >= 96)
-        game_checkpoint(g);
 }
 void game_tick(Game *g, const SkInput *in) {
     SkU8 advance = (in->pressed & SK_ACTION) ||
@@ -608,6 +606,8 @@ void game_tick(Game *g, const SkInput *in) {
             else if (g->option == 1) {
                 if (g->return_mode == G_AMBUSH)
                     ambush_begin(g);
+                else if (g->return_mode == G_ROACH)
+                    roach_begin(g);
                 else if (g->return_mode == G_CORRIDOR) {
                     g->mode = G_CORRIDOR;
                     g->x = g->destination_x = CORRIDOR_START;
@@ -623,7 +623,8 @@ void game_tick(Game *g, const SkInput *in) {
     }
     if ((in->pressed & SK_PAUSE) &&
         ((g->mode >= G_DIALOGUE && g->mode <= G_JOURNAL) || g->mode == G_BELL ||
-         g->mode == G_CORRIDOR || g->mode == G_AMBUSH)) {
+         g->mode == G_CORRIDOR || g->mode == G_AMBUSH ||
+         (g->mode == G_ROACH && g->roach_phase <= ROACH_ACTIVE))) {
         g->return_mode = g->mode;
         g->mode = G_PAUSE;
         g->bow_draw = g->shot_request = 0;
@@ -631,6 +632,10 @@ void game_tick(Game *g, const SkInput *in) {
         return;
     }
     ++g->tick;
+    if (g->mode == G_ROACH) {
+        roach_tick(g, in);
+        return;
+    }
     if (g->mode == G_AMBUSH) {
         if (ambush_tick(g, in))
             enter_room(g, 2);
@@ -779,6 +784,10 @@ void game_tick(Game *g, const SkInput *in) {
     }
     if (g->mode != G_EXPLORE)
         return;
+    if (g->fear >= 100) {
+        roach_begin(g);
+        return;
+    }
     if (in->pressed & SK_JOURNAL) {
         g->mode = G_JOURNAL;
         g->journal_page = 0;
@@ -800,9 +809,15 @@ void game_tick(Game *g, const SkInput *in) {
         g->bow_direction = g->direction << 1;
     }
     tick_environment(g);
+    if (g->fear >= 100) {
+        roach_begin(g);
+        return;
+    }
     combat_tick(g, in);
-    if (g->fear >= 96 && g->mode == G_EXPLORE)
-        game_checkpoint(g);
+    if (g->fear >= 100 && g->mode == G_EXPLORE) {
+        roach_begin(g);
+        return;
+    }
     if (!g->bow_mode && g->mode == G_EXPLORE &&
         ((!(g->tick & 3) && !g->notice_ticks) || advance || (in->pressed & SK_LIGHT)))
         g->focus = game_nearby(g);

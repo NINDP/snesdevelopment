@@ -161,8 +161,14 @@ static void test_darkness_pause_and_recovery(void) {
     assert(g.oil == 0);
     g.flags = F_HEAD;
     g.evidence = 1;
-    g.fear = 96;
+    g.fear = 100;
     game_tick(&g, &none);
+    assert(g.mode == G_ROACH && g.roach_phase == ROACH_INTRO);
+    press(&g, SK_ACTION);
+    while (g.roach_phase == ROACH_ACTIVE)
+        game_tick(&g, &none);
+    assert(g.roach_misses == 5 && g.roach_phase == ROACH_LOST);
+    press(&g, SK_ACTION);
     assert(g.mode == G_DIALOGUE && g.dialogue == D_RETRY && g.oil == 120 && g.flags == F_HEAD &&
            g.evidence == 1);
     assert(!game_can_walk(0, 20, 40));
@@ -367,7 +373,7 @@ static void test_clock_and_text(void) {
             assert(strlen(line->text) <= 154);
             assert(strlen(line->text) == line->length);
         }
-    assert(sizeof(Game) == 164);
+    assert(sizeof(Game) == 176);
 }
 
 static void test_optional_systems(void) {

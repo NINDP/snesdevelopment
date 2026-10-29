@@ -7,6 +7,8 @@ extern u8 bg0_tiles, bg0_tiles_end, bg0_map;
 extern u8 bg1_tiles, bg1_tiles_end, bg1_map, bg1_palette;
 extern u8 menu_torch_tiles;
 extern u8 journal_tiles, journal_tiles_end, journal_map, journal_palette;
+extern u8 roach_tiles, roach_tiles_end, roach_map, roach_palette;
+extern u8 roach_actors, roach_actor_palette;
 extern u8 intro_actor0, intro_actor1, intro_actor2, intro_actor3;
 extern u8 intro_actor4, intro_actor5, intro_actor6, intro_actor7;
 static u8 *const intro_actors[8] = {&intro_actor0,&intro_actor1,&intro_actor2,&intro_actor3,
@@ -212,6 +214,12 @@ static void background(SkU8 id) {
     if (current_bg >= 10 && current_bg <= 13)
         perspective_leave();
     switch (id) {
+    case 16:
+        tiles = &roach_tiles;
+        end = &roach_tiles_end;
+        map = &roach_map;
+        palette = &roach_palette;
+        break;
     case 15: /* Journal; 14 is reserved for the Mode 7 clearing. */
         tiles = &journal_tiles;
         end = &journal_tiles_end;
@@ -304,6 +312,12 @@ static void background(SkU8 id) {
     }
     setScreenOff();
     REG_HDMAEN = 0;
+    if (id == 16) {
+        dmaCopyVram(&roach_actors, VIDEO_OBJ_TILES, 2048);
+        dmaCopyCGram(&roach_actor_palette, 128, 32);
+        setMode(BG_MODE1, BG3_MODE1_PRIORITY_HIGH);
+        REG_TM = 0x15;
+    }
     if (id == 6) {
         dmaCopyVram(&intro_actor0, VIDEO_OBJ_TILES, 1024);
         dmaCopyCGram(&sprite_palette, 128, 32);
@@ -332,8 +346,8 @@ static void background(SkU8 id) {
     current_bg = id;
     scene_age = 0;
     /* Keep the first card dark while the initial draw prepares its reveal. */
-    if (id == 15)
-        REG_INIDISP = 0x80; /* Publish the complete journal text before reveal. */
+    if (id == 15 || id == 16)
+        REG_INIDISP = 0x80; /* Publish the complete text before reveal. */
     else if (id == 0)
         REG_INIDISP = 0;
     else
@@ -552,6 +566,77 @@ void video_draw(const Game *g, SkU8 scope) {
     SkU16 keys[10];
     const StoryLine *line;
     calibration_stage = 255;
+    if (g->mode == G_ROACH || (g->mode == G_PAUSE && g->return_mode == G_ROACH)) {
+        if (current_bg != 16) {
+            background(16);
+            memset(last_keys, 255, sizeof(last_keys));
+        }
+        brightness = 15;
+        hide();
+        flashlight_prepare(g, 0);
+        keys[0] = g->mode | ((SkU16)g->roach_phase << 8);
+        keys[1] = g->roach_round | ((SkU16)g->roach_hits << 8);
+        keys[2] = g->roach_misses | ((SkU16)g->roach_cursor << 8);
+        keys[3] = g->option | ((SkU16)scope << 8);
+        redraw = keys[0] != last_keys[0] || keys[1] != last_keys[1] ||
+                 keys[2] != last_keys[2] || keys[3] != last_keys[3];
+        if (redraw) {
+            memcpy(last_keys, keys, 8);
+            memset(text_map, 0, sizeof(text_map));
+            dirty = 1;
+            banner_dirty = 0;
+        }
+        panel(0, 3);
+        text(4, 1, TXT_ROACH_TITLE);
+        panel(25, 3);
+        text(1, 25, TXT_ROACH_HITS);
+        number(8, 25, g->roach_hits);
+        text(11, 25, TXT_ROACH_MISSES);
+        number(20, 25, g->roach_misses);
+        text(21, 25, "/4");
+        number(25, 25, g->roach_round);
+        text(27, 25, "/10");
+        text(1, 26, scope ? TXT_ROACH_SCOPE : TXT_ROACH_KEYS);
+        if (g->mode == G_PAUSE) {
+            panel(7, 17);
+            text(2, 8, TXT_PAUSE);
+            text(3, 12, TXT_RESUME);
+            text(3, 16, TXT_AMBUSH_RESTART);
+            text(3, 20, TXT_MENU);
+            text(1, 12 + g->option * 4, ">");
+        } else if (g->roach_phase != ROACH_ACTIVE) {
+            panel(8, 16);
+            text(2, 9, g->roach_phase == ROACH_INTRO ? TXT_ROACH_TITLE :
+                (g->roach_phase == ROACH_WON ? TXT_ROACH_WON : TXT_ROACH_LOST));
+            text(2, 12, g->roach_phase == ROACH_INTRO ? TXT_ROACH_INTRO :
+                (g->roach_phase == ROACH_WON ? TXT_ROACH_AFTER : TXT_ROACH_RETRY));
+            text(2, 21, g->roach_phase == ROACH_INTRO ? TXT_ROACH_START :
+                (g->roach_phase == ROACH_WON ? TXT_ROACH_CONTINUE : TXT_ROACH_RETURN));
+        } else {
+            if (g->roach_timer) {
+                oamSet(0, roach_x(g->roach_hole)-16,
+                       roach_y(g->roach_hole)-30 + ((g->tick >> 3) & 1),
+                       2, 0, 0, 0, 0);
+                oamSetEx(0, OBJ_LARGE, OBJ_SHOW);
+            }
+            if (g->roach_flash) {
+                oamSet(4, roach_x(g->roach_hole)-16, roach_y(g->roach_hole)-30,
+                       3, 0, 0, 8, 0);
+                oamSetEx(4, OBJ_LARGE, OBJ_SHOW);
+            }
+            /* The raised wooden mallet also marks the pad-selected hole. */
+            oamSet(8, roach_x(g->roach_cursor)+8,
+                   roach_y(g->roach_cursor)-40 + (g->roach_flash ? 9 : 0),
+                   3, 0, 0, 4, 0);
+            oamSetEx(8, OBJ_LARGE, OBJ_SHOW);
+        }
+        return;
+    }
+    if (current_bg == 16) {
+        setScreenOff();
+        dmaCopyVram(&sprite_tiles, VIDEO_OBJ_TILES, &sprite_tiles_end - &sprite_tiles);
+        dmaCopyCGram(&sprite_palette, 128, 32);
+    }
     if (g->mode == G_AMBUSH || (g->mode == G_PAUSE && g->return_mode == G_AMBUSH)) {
         if (current_bg != 14) {
             if (current_bg >= 10 && current_bg <= 13)

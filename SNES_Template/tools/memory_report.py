@@ -38,7 +38,7 @@ def report():
         entries = re.findall(r'^\s*(\S+) dsb (\d+)\s*$', path.read_text(), re.M)
         allocations[str(path.relative_to(ROOT))] = sum(int(n) for _, n in entries)
         sizes.update({name.split('{WLA_FILENAME}_')[-1]: int(n) for name, n in entries})
-    expected = {'text_map': 1792, 'tables': 266, 'heat_tables': 266, 'game': 164}
+    expected = {'text_map': 1792, 'tables': 266, 'heat_tables': 266, 'game': 176}
     for name, size in expected.items():
         if sizes.get(name) != size:
             raise ValueError('Unexpected buffer/state size: ' + name)
